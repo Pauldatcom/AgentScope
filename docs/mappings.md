@@ -48,10 +48,10 @@ for the source is loaded automatically.
 
 Source: <https://huggingface.co/datasets/SALT-NLP/SWE-chat>.
 
-SWE-chat rassemble des conversations de développement avec appels d'outils.
-La structure diffère de TraceLab (pas de `session_id` au sens TraceLab ;
-les conversations sont organisées par `repo` + `instance_id`). Le mapping
-suivant est proposé par l'assistant IA et validé depuis l'UI :
+SWE-chat collects development conversations with tool calls. The structure
+differs from TraceLab (no `session_id` in the TraceLab sense; conversations
+are organized by `repo` + `instance_id`). The following mapping is proposed
+by the AI assistant and validated from the UI:
 
 ```json
 {
@@ -74,17 +74,17 @@ suivant est proposé par l'assistant IA et validé depuis l'UI :
 }
 ```
 
-## Trace Commons (structure inconnue)
+## Trace Commons (unknown structure)
 
 Source: <https://huggingface.co/datasets/trace-commons/agent-traces>.
 
-Trace Commons conserve des sessions dans les formats natifs de différents
-agents. La structure varie — aucun connecteur codé à la main n'est requis.
-L'assistant IA profile les champs et propose un mapping ; l'utilisateur
-corrige et valide depuis l'UI.
+Trace Commons preserves sessions in the native formats of various agents.
+The structure varies — no hand-coded connector is required. The AI assistant
+profiles the fields and proposes a mapping; the user edits and validates
+from the UI.
 
-Exemple de mapping pour un format `trace_commons` (testé dans
-`tests/e2e/test_unknown_structure_import.py`) :
+Example mapping for a `trace_commons` format (tested in
+`tests/e2e/test_unknown_structure_import.py`):
 
 ```json
 {
@@ -108,6 +108,6 @@ Exemple de mapping pour un format `trace_commons` (testé dans
 }
 ```
 
-L'application signale les champs non mappés comme ambiguïtés. Un import
-partiel correctement expliqué est préférable à un import apparemment réussi
-qui produit des chiffres faux.
+The application reports unmapped fields as ambiguities. A correctly
+explained partial import is preferred over an apparently successful import
+that produces incorrect figures.

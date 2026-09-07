@@ -70,7 +70,11 @@ export function MappingAssistantPage() {
         tool_call: {},
       };
       for (const f of data.proposal.fields) {
-        if (f.target_field.startsWith("external_session_id") || f.target_field === "agent" || f.target_field === "model") {
+        if (
+          f.target_field.startsWith("external_session_id") ||
+          f.target_field === "agent" ||
+          f.target_field === "model"
+        ) {
           mappingObj.session[f.target_field] = f.source_field;
         } else if (f.target_field.startsWith("tool") || f.target_field === "tools_path") {
           mappingObj.tool_call[f.target_field] = f.source_field;
@@ -103,7 +107,7 @@ export function MappingAssistantPage() {
       if (!r.ok) throw new Error(await readApiError(r));
       const data = await r.json();
       if (!data.is_valid) {
-        setError("Mapping invalide:\n" + data.errors.join("\n"));
+        setError("Invalid mapping:\n" + data.errors.join("\n"));
         setPreview(null);
       } else {
         setPreview(data.preview);
@@ -117,10 +121,10 @@ export function MappingAssistantPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Assistant IA d'import</h1>
+      <h1 className="text-2xl font-bold">AI Import Assistant</h1>
       <p className="text-slate-600">
-        Déposez un fichier inconnu. L'IA propose un mapping, vous le corrigez
-        puis prévisualisez le résultat avant de valider.
+        Drop an unknown file. The AI proposes a field mapping — you review,
+        edit, and preview the normalized result before validating.
       </p>
 
       <div className="flex flex-wrap items-end gap-4">
@@ -132,7 +136,7 @@ export function MappingAssistantPage() {
             className="rounded border bg-white px-3 py-2"
             disabled={sources.length === 0}
           >
-            {sources.length === 0 && <option value="">Aucune source</option>}
+            {sources.length === 0 && <option value="">No source available</option>}
             {sources.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name} ({s.version})
@@ -151,7 +155,7 @@ export function MappingAssistantPage() {
           disabled={!file || loading}
           className="rounded bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
         >
-          Analyser
+          Analyze
         </button>
       </div>
 
@@ -161,19 +165,19 @@ export function MappingAssistantPage() {
 
       {analysis && (
         <div className="space-y-4">
-          <div className="rounded border bg-white p-4">
-            <h2 className="font-semibold">Profil du fichier</h2>
+          <div className="rounded-lg border bg-white p-4 shadow-sm">
+            <h2 className="font-semibold text-slate-700">File profile</h2>
             <p className="text-sm text-slate-600">
-              {analysis.row_count} lignes, champs: {analysis.fields.join(", ")}
+              {analysis.row_count} rows, fields: {analysis.fields.join(", ")}
             </p>
           </div>
 
-          <div className="rounded border bg-white p-4">
-            <h2 className="font-semibold">Proposition de l'IA</h2>
+          <div className="rounded-lg border bg-white p-4 shadow-sm">
+            <h2 className="font-semibold text-slate-700">AI proposal</h2>
             <p className="text-sm text-slate-600 mb-2">{analysis.proposal.explanation}</p>
             {analysis.proposal.ambiguities.length > 0 && (
               <div className="mt-2 rounded bg-amber-50 p-2 text-sm text-amber-700">
-                <strong>Ambiguïtés:</strong>
+                <strong>Ambiguities:</strong>
                 <ul className="list-disc pl-5">
                   {analysis.proposal.ambiguities.map((a, i) => (
                     <li key={i}>{a}</li>
@@ -184,10 +188,10 @@ export function MappingAssistantPage() {
             <table className="mt-2 w-full text-sm">
               <thead>
                 <tr className="border-b">
-                  <th className="py-1 text-left">Champ source</th>
-                  <th className="py-1 text-left">Champ cible</th>
-                  <th className="py-1 text-left">Confiance</th>
-                  <th className="py-1 text-left">Explication</th>
+                  <th className="py-1 text-left">Source field</th>
+                  <th className="py-1 text-left">Target field</th>
+                  <th className="py-1 text-left">Confidence</th>
+                  <th className="py-1 text-left">Explanation</th>
                 </tr>
               </thead>
               <tbody>
@@ -203,8 +207,8 @@ export function MappingAssistantPage() {
             </table>
           </div>
 
-          <div className="rounded border bg-white p-4">
-            <h2 className="font-semibold">Mapping (éditable)</h2>
+          <div className="rounded-lg border bg-white p-4 shadow-sm">
+            <h2 className="font-semibold text-slate-700">Mapping (editable)</h2>
             <textarea
               value={mapping}
               onChange={(e) => setMapping(e.target.value)}
@@ -216,13 +220,15 @@ export function MappingAssistantPage() {
               disabled={loading || !sourceId}
               className="mt-2 rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
             >
-              Prévisualiser
+              Preview
             </button>
           </div>
 
           {preview && (
-            <div className="rounded border bg-white p-4">
-              <h2 className="font-semibold">Prévisualisation ({preview.length} sessions)</h2>
+            <div className="rounded-lg border bg-white p-4 shadow-sm">
+              <h2 className="font-semibold text-slate-700">
+                Preview ({preview.length} sessions)
+              </h2>
               <pre className="mt-2 overflow-auto rounded bg-slate-100 p-2 text-xs">
                 {JSON.stringify(preview, null, 2)}
               </pre>
