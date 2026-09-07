@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-
-const API = "/api";
+import { apiJson } from "../api";
 
 interface ModelCall {
   id: string;
@@ -39,10 +38,9 @@ export function SessionPage() {
 
   useEffect(() => {
     if (!id) return;
-    fetch(`${API}/sessions/${id}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
+    apiJson<SessionDetail>(`/sessions/${id}`)
       .then(setDetail)
-      .catch((e) => setError(String(e)));
+      .catch((e: unknown) => setError(String(e)));
   }, [id]);
 
   if (error) return <pre className="text-red-700">{error}</pre>;

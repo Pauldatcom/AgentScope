@@ -3,8 +3,8 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from "recharts";
+import { apiJson } from "../api";
 
-const API = (import.meta as any).env?.VITE_API_URL ?? "/api";
 const COLORS = ["#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#6366f1", "#8b5cf6"];
 
 export function DashboardPage() {
@@ -12,10 +12,9 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API}/dashboard`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
+    apiJson("/dashboard")
       .then(setData)
-      .catch((e) => setError(String(e)));
+      .catch((e: unknown) => setError(String(e)));
   }, []);
 
   if (error) return <pre className="text-red-700">{error}</pre>;

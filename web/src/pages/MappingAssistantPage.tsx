@@ -1,6 +1,5 @@
-import { useState } from "react";
-
-const API = "/api";
+import { useEffect, useState } from "react";
+import { apiJson, apiUrl, readApiError } from "../api";
 
 interface ProposalField {
   source_field: string;
@@ -25,13 +24,30 @@ interface AnalysisResponse {
   proposal: Proposal;
 }
 
+interface Source {
+  id: string;
+  name: string;
+  version: string;
+}
+
 export function MappingAssistantPage() {
   const [file, setFile] = useState<File | null>(null);
+  const [sources, setSources] = useState<Source[]>([]);
+  const [sourceId, setSourceId] = useState("");
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [mapping, setMapping] = useState<string>("");
   const [preview, setPreview] = useState<unknown[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    apiJson<Source[]>("/sources")
+      .then((list) => {
+        setSources(list);
+        setSourceId((current) => current || list[0]?.id || "");
+      })
+      .catch((e: unknown) => setError(String(e)));
+  }, []);
 
   async function analyze() {
     if (!file) return;
@@ -41,11 +57,11 @@ export function MappingAssistantPage() {
     form.append("file", file);
     form.append("sample_size", "5");
     try {
-      const r = await fetch(`${API}/mappings/analyze`, {
+      const r = await fetch(apiUrl("/mappings/analyze"), {
         method: "POST",
         body: form,
       });
-      if (!r.ok) throw new Error(await r.text());
+      if (!r.ok) throw new Error(await readApiError(r));
       const data: AnalysisResponse = await r.json();
       setAnalysis(data);
       const mappingObj: Record<string, Record<string, string>> = {
@@ -71,20 +87,20 @@ export function MappingAssistantPage() {
   }
 
   async function applyPreview() {
-    if (!file) return;
+    if (!file || !sourceId) return;
     setLoading(true);
     setError(null);
     const form = new FormData();
     form.append("file", file);
     form.append("mapping_json", mapping);
-    form.append("source_id", "00000000-0000-0000-0000-000000000001");
+    form.append("source_id", sourceId);
     form.append("preview_rows", "5");
     try {
-      const r = await fetch(`${API}/mappings/apply`, {
+      const r = await fetch(apiUrl("/mappings/apply"), {
         method: "POST",
         body: form,
       });
-      if (!r.ok) throw new Error(await r.text());
+      if (!r.ok) throw new Error(await readApiError(r));
       const data = await r.json();
       if (!data.is_valid) {
         setError("Mapping invalide:\n" + data.errors.join("\n"));
@@ -107,7 +123,23 @@ export function MappingAssistantPage() {
         puis prévisualisez le résultat avant de valider.
       </p>
 
-      <div className="flex gap-4">
+      <div className="flex flex-wrap items-end gap-4">
+        <label className="block text-sm">
+          <span className="mb-1 block text-slate-600">Source</span>
+          <select
+            value={sourceId}
+            onChange={(e) => setSourceId(e.target.value)}
+            className="rounded border bg-white px-3 py-2"
+            disabled={sources.length === 0}
+          >
+            {sources.length === 0 && <option value="">Aucune source</option>}
+            {sources.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} ({s.version})
+              </option>
+            ))}
+          </select>
+        </label>
         <input
           type="file"
           accept=".jsonl,.csv,.parquet"
@@ -181,7 +213,7 @@ export function MappingAssistantPage() {
             />
             <button
               onClick={applyPreview}
-              disabled={loading}
+              disabled={loading || !sourceId}
               className="mt-2 rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
             >
               Prévisualiser
