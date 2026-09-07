@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: agentscope
+          POSTGRES_PASSWORD: agentscope
+          POSTGRES_DB: agentscope
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U agentscope -d agentscope"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://agentscope:agentscope@localhost:5432/agentscope
+      IA_PROVIDER: fake
+      IA_MODEL: fake-local
+      OPENROUTER_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --extra dev
+      - name: Ruff
+        run: uv run ruff check .
+      - name: Mypy
+        run: uv run mypy agentscope || true
+      - name: Pytest (unit + e2e)
+        run: uv run pytest tests/unit tests/e2e -v
+      - name: Pytest (integration)
+        run: uv run pytest -m integration -v
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+      - name: Install
+        run: npm install
+      - name: Build
+        run: npm run build
