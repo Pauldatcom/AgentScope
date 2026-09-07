@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -29,7 +29,7 @@ def create_source(payload: SourceIn, uow=Depends(_uow)):
         id=new_id(),
         name=payload.name,
         version=payload.version,
-        retrieved_at=datetime.utcnow(),
+        retrieved_at=datetime.now(UTC),
         method=payload.method,
         license=payload.license,
     )

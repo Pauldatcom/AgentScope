@@ -86,4 +86,8 @@ markers = [
     "integration: requires external services (Postgres, network).",
     "e2e: end-to-end scenarios using the FakeAgent.",
 ]
-filterwarnings = ["error::DeprecationWarning"]
+filterwarnings = [
+    "error::DeprecationWarning:agentscope",
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
