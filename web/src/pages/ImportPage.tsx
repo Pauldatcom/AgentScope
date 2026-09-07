@@ -22,6 +22,17 @@ interface ImportReport {
   is_duplicate_run: boolean;
 }
 
+function Spinner() {
+  return (
+    <div className="flex items-center justify-center py-4">
+      <svg className="h-6 w-6 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+      </svg>
+    </div>
+  );
+}
+
 export function ImportPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [sourceId, setSourceId] = useState("");
@@ -64,10 +75,10 @@ export function ImportPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Importer un fichier</h1>
+      <h1 className="text-2xl font-bold">Import a file</h1>
       <p className="text-slate-600">
-        Choisissez une source déjà connue, puis un fichier JSONL, CSV ou Parquet.
-        Un mapping vide réutilise le mapping actif de la source.
+        Choose a known source, then upload a JSONL, CSV, or Parquet file.
+        An empty mapping reuses the source's active mapping.
       </p>
 
       <div className="flex flex-wrap items-end gap-4">
@@ -79,7 +90,7 @@ export function ImportPage() {
             className="rounded border bg-white px-3 py-2"
             disabled={sources.length === 0}
           >
-            {sources.length === 0 && <option value="">Aucune source</option>}
+            {sources.length === 0 && <option value="">No source available</option>}
             {sources.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name} ({s.version})
@@ -97,9 +108,11 @@ export function ImportPage() {
           disabled={!file || !sourceId || loading}
           className="rounded bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
         >
-          {loading ? "Import…" : "Importer"}
+          {loading ? "Importing…" : "Import"}
         </button>
       </div>
+
+      {loading && <Spinner />}
 
       {error && <pre className="rounded bg-red-50 p-3 text-red-700">{error}</pre>}
 
@@ -107,22 +120,22 @@ export function ImportPage() {
         <div
           className={
             report.is_duplicate_run
-              ? "rounded border border-amber-200 bg-amber-50 p-4"
-              : "rounded border bg-white p-4"
+              ? "rounded-lg border border-amber-200 bg-amber-50 p-4"
+              : "rounded-lg border bg-white p-4 shadow-sm"
           }
         >
           <h2 className="font-semibold">
             {report.is_duplicate_run
-              ? "Fichier déjà importé — aucun doublon créé"
-              : "Bilan de l'import"}
+              ? "File already imported — no duplicates created"
+              : "Import report"}
           </h2>
-          <dl className="mt-3 grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
+          <dl className="mt-3 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
             <div>
-              <dt className="text-slate-500">Statut</dt>
+              <dt className="text-slate-500">Status</dt>
               <dd className="font-medium">{report.status}</dd>
             </div>
             <div>
-              <dt className="text-slate-500">Lignes lues</dt>
+              <dt className="text-slate-500">Rows read</dt>
               <dd className="font-medium">{report.rows_read}</dd>
             </div>
             <div>
@@ -130,26 +143,26 @@ export function ImportPage() {
               <dd className="font-medium">{report.sessions_imported}</dd>
             </div>
             <div>
-              <dt className="text-slate-500">Appels modèle</dt>
+              <dt className="text-slate-500">Model calls</dt>
               <dd className="font-medium">{report.model_calls_imported}</dd>
             </div>
             <div>
-              <dt className="text-slate-500">Appels outils</dt>
+              <dt className="text-slate-500">Tool calls</dt>
               <dd className="font-medium">{report.tool_calls_imported}</dd>
             </div>
             <div>
-              <dt className="text-slate-500">Doublons</dt>
+              <dt className="text-slate-500">Duplicates</dt>
               <dd className="font-medium">{report.duplicates}</dd>
             </div>
             <div className="col-span-2">
-              <dt className="text-slate-500">Empreinte</dt>
+              <dt className="text-slate-500">File hash</dt>
               <dd className="font-mono text-xs">{report.file_hash}</dd>
             </div>
           </dl>
           {!report.is_duplicate_run && (
             <p className="mt-3 text-sm">
               <Link to="/dashboard" className="text-blue-700 underline">
-                Voir le dashboard
+                View dashboard
               </Link>
             </p>
           )}

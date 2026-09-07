@@ -1,34 +1,34 @@
-# Compte rendu — import avec deux modèles IA
+# AI import report — two-model test
 
-Le brief exige de tester le parcours d'identification et d'import avec au
-moins deux modèles distincts. Ce document décrit les configurations testées,
-le déroulement et les résultats, sans publier de secrets.
+The brief requires testing the identification and import workflow with at
+least two distinct models. This document describes the tested configurations,
+the workflow, and the results — without publishing any secrets.
 
-## Configurations testées
+## Tested configurations
 
 ### Configuration 1 — `z-ai/glm-5.2` via OpenRouter
 
 ```env
 IA_PROVIDER=openrouter
 IA_MODEL=z-ai/glm-5.2
-OPENROUTER_API_KEY=...    # clé personnelle, jamais commitée
+OPENROUTER_API_KEY=...    # personal key, never committed
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 ```
 
-**Déroulement** :
-1. Upload d'un fichier JSONL inconnu via `POST /mappings/analyze`.
-2. L'adaptateur `OpenRouterAdapter` envoie le profil des champs + un
-   échantillon (3 lignes, tronqué à 4000 caractères) à l'API OpenRouter.
-3. Le modèle `z-ai/glm-5.2` retourne un JSON de proposition de mapping.
-4. La proposition est validée par `Validator` (champs requis présents).
-5. L'utilisateur édite le mapping dans l'UI, prévisualise, puis valide.
-6. Le moteur déterministe `ApplyMappingUseCase` applique le mapping validé.
-7. Les données sont importées dans la base.
+**Workflow**:
+1. Upload an unknown JSONL file via `POST /mappings/analyze`.
+2. The `OpenRouterAdapter` sends the field profile + a sample (3 rows,
+   truncated to 4000 characters) to the OpenRouter API.
+3. The `z-ai/glm-5.2` model returns a JSON mapping proposal.
+4. The proposal is validated by `Validator` (required fields present).
+5. The user edits the mapping in the UI, previews, and validates.
+6. The deterministic engine `ApplyMappingUseCase` applies the validated mapping.
+7. The data is imported into the database.
 
-**Résultat** : le parcours complet fonctionne. Le modèle propose des
-correspondances cohérentes pour les champs TraceLab (`session_id` →
-`external_session_id`, `provider` → `agent`, `input_tokens_total` →
-`prompt_tokens`, etc.). Le mapping est enregistré et réutilisable.
+**Result**: the full workflow works. The model proposes coherent
+correspondences for TraceLab fields (`session_id` → `external_session_id`,
+`provider` → `agent`, `input_tokens_total` → `prompt_tokens`, etc.). The
+mapping is saved and reusable.
 
 ### Configuration 2 — `openai/gpt-4o-mini` via OpenRouter
 
@@ -39,51 +39,50 @@ OPENROUTER_API_KEY=...
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 ```
 
-**Déroulement** : identique à la configuration 1. Le modèle `gpt-4o-mini`
-propose un mapping légèrement différent (par exemple il mappe `model` →
-`model` au lieu de `provider` → `agent`), mais le parcours de validation,
-prévisualisation et import fonctionne de la même façon.
+**Workflow**: identical to configuration 1. The `gpt-4o-mini` model
+proposes a slightly different mapping (for example, it maps `model` →
+`model` instead of `provider` → `agent`), but the validation, preview, and
+import workflow works the same way.
 
-**Résultat** : le parcours complet fonctionne. Les mappings déjà enregistrés
-restent utilisables après le changement de modèle — seul le proposition
-initiale diffère.
+**Result**: the full workflow works. Saved mappings remain usable after
+changing the model — only the initial proposal for a new unknown file may
+differ.
 
-### Configuration 3 (CI) — `FakeAgent` sans réseau
+### Configuration 3 (CI) — `FakeAgent` without network
 
 ```env
 IA_PROVIDER=fake
 IA_MODEL=fake-local
-OPENROUTER_API_KEY=     # vide
+OPENROUTER_API_KEY=     # empty
 ```
 
-**Déroulement** : `FakeAgent` retourne un mapping canonique pour un JSONL
-TraceLab-like, sans aucun appel réseau ni clé API. Le parcours complet
-(analyse → validation → import) est exercé par `tests/e2e` à chaque PR.
+**Workflow**: `FakeAgent` returns a canonical mapping for a TraceLab-like
+JSONL, without any network call or API key. The full workflow (analyze →
+validate → import) is exercised by `tests/e2e` on every PR.
 
-**Résultat** : 41 tests verts sans réseau. Le substitut garantit que la CI
-fonctionne sur n'importe quel environnement.
+**Result**: 41 tests pass without network. The stub guarantees that CI
+works on any environment.
 
-## Procédure de changement de modèle
+## How to change the model
 
-1. Éditer `.env` : changer la valeur de `IA_MODEL`.
-2. Redémarrer l'API : `uv run uvicorn agentscope.api.main:app --reload`.
-3. `main.py` reconstruit l'adaptateur depuis `Settings` — aucun changement
-   de code nécessaire.
-4. Les mappings déjà enregistrés restent utilisables ; seule la proposition
-   initiale pour un nouveau fichier inconnu peut différer.
+1. Edit `.env`: change the `IA_MODEL` value.
+2. Restart the API: `uv run uvicorn agentscope.api.main:app --reload`.
+3. `main.py` rebuilds the adapter from `Settings` — no code change needed.
+4. Saved mappings remain usable; only the initial proposal for a new
+   unknown file may differ.
 
-## Outils IA employés
+## AI tools used
 
-- **OpenRouter** (`https://openrouter.ai`) — routeur d'API LLM, un seul
-  adaptateur couvre tous les modèles disponibles.
-- **FakeAgent** — substitut déterministe codé dans
-  `agentscope/adapters/ia/fake/agent.py`, sans dépendance externe.
+- **OpenRouter** (`https://openrouter.ai`) — LLM API router; a single
+  adapter covers all available models.
+- **FakeAgent** — deterministic stub coded in
+  `agentscope/adapters/ia/fake/agent.py`, with no external dependency.
 
-## Composants externes réutilisés
+## External components reused
 
-- **FastAPI** — framework web Python pour l'API.
-- **SQLAlchemy + Alembic** — ORM et migrations PostgreSQL.
-- **pandas + pyarrow** — lecture CSV et Parquet.
+- **FastAPI** — Python web framework for the API.
+- **SQLAlchemy + Alembic** — ORM and migrations for PostgreSQL.
+- **pandas + pyarrow** — CSV and Parquet reading.
 - **React + Vite + Recharts + Tailwind CSS** — frontend.
-- **PostgreSQL 16** — stockage relationnel (via Docker Compose).
-- **uv** — gestionnaire de dépendances Python.
+- **PostgreSQL 16** — relational storage (via Docker Compose).
+- **uv** — Python dependency manager.

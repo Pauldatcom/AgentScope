@@ -17,10 +17,10 @@ function Nav() {
         Dashboard
       </Link>
       <Link to="/imports" className="text-slate-600 hover:text-slate-900 mr-4">
-        Importer
+        Import
       </Link>
       <Link to="/assistant" className="text-slate-600 hover:text-slate-900">
-        Assistant IA
+        AI Assistant
       </Link>
     </nav>
   );
