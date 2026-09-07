@@ -35,6 +35,19 @@ uv run uvicorn agentscope.api.main:app --reload --port 8000
 cd web && npm install && npm run dev   # http://localhost:5173
 ```
 
+## Features
+
+- **Import** JSONL, CSV and Parquet files with idempotence (sha256 + natural key)
+- **Normalize** into a 3NF relational model (sessions → model calls → tool calls)
+- **AI import assistant** — drop an unknown file, the AI proposes a field mapping,
+  you edit and preview before validating. The AI never writes to the database.
+- **Dashboard** — 4 indicators (tokens by model, sessions by agent, tool
+  distribution, error rate), 3 visualizations, detailed session timeline.
+- **Interchangeable AI** — one OpenRouter key, any model via `.env`. `FakeAgent`
+  runs the full pipeline in CI without a network or API key.
+- **Import report** — rows read, sessions imported, duplicates, rejections with
+  explanations.
+
 ## Architecture
 
 Clean Architecture, modular monolith. The domain depends on nothing but the
@@ -75,6 +88,47 @@ flags ambiguities. You review, edit and preview the normalized result before
 validating. The AI never writes to the database — the deterministic engine
 applies the validated mapping. The model is configurable (`.env`); the
 `FakeAgent` stub runs the full pipeline in CI without a network or API key.
+
+See [`docs/ai_providers.md`](docs/ai_providers.md) for the tested configurations
+and the procedure to change models.
+
+## API endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/sources` | List dataset sources |
+| `POST` | `/sources` | Create a source |
+| `POST` | `/imports/upload` | Upload a file + import (FormData) |
+| `GET` | `/sessions` | List sessions (filters: source_id, agent, model) |
+| `GET` | `/sessions/{id}` | Session detail (model calls + tool calls) |
+| `GET` | `/dashboard` | Indicators + definitions (filters: source_id, agent, model) |
+| `POST` | `/mappings/analyze` | Analyze an unknown file (AI proposes a mapping) |
+| `POST` | `/mappings/apply` | Apply a mapping + preview the normalized result |
+| `GET` | `/mappings` | List saved mappings |
+| `POST` | `/mappings` | Save a mapping (versioned, reusable) |
+
+## Observations
+
+Three observations drawn from the TraceLab v0.0.1 sample (1000 lines, 28
+sessions, 1118 tool calls) are documented in
+[`docs/observations.md`](docs/observations.md).
+
+## Documentation
+
+- [Architecture](docs/architecture.md) — component diagram + dependency rule
+- [Data model](docs/data_model.md) — 3NF relational schema + ERD
+- [Indicators](docs/indicators.md) — definitions, units, missing-value handling
+- [Mappings](docs/mappings.md) — TraceLab + SWE-chat field correspondences
+- [AI providers](docs/ai_providers.md) — tested configs + how to switch models
+- [Decisions](docs/decisions.md) — 7 ADRs
+- [Datasets](docs/datasets.md) — sources, retrieval method, licensing
+- [AI import report](docs/ai_import_report.md) — 2-model test report
+- [Observations](docs/observations.md) — 3 figures from real data
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). Pull requests must pass CI (ruff,
+mypy, pytest, web build) and be reviewed by another contributor.
 
 ## License
 
