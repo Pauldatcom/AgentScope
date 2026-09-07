@@ -22,13 +22,16 @@ docker compose up -d postgres
 # 3. Install Python deps
 uv sync --extra dev
 
-# 4. Run migrations
+# 4. Run migrations (creates the 7 tables + seed source/mapping)
 uv run alembic upgrade head
 
-# 5. Run the API
+# 5. (Optional) Fetch a TraceLab sample for local dev
+bash scripts/fetch_sample.sh    # downloads 1000 lines to trace/sample.jsonl (gitignored)
+
+# 6. Run the API
 uv run uvicorn agentscope.api.main:app --reload --port 8000
 
-# 6. Run the frontend
+# 7. Run the frontend
 cd web && npm install && npm run dev   # http://localhost:5173
 ```
 

@@ -2,6 +2,10 @@
 
 The Mapping is a plain dict of correspondences applied deterministically.
 The AI never executes this code; it only produces the mapping.
+
+A TraceLab JSONL row represents ONE LLM round within a session. Multiple
+rows share the same `external_session_id`. The Normalizer groups rows by
+session so that one session -> many model_calls -> many tool_calls.
 """
 
 from __future__ import annotations
@@ -9,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
+from uuid import UUID
 
 from ..contracts.file_reader import RawRow
 from ..entities import ModelCall, Session, ToolCall, new_id
@@ -29,8 +34,8 @@ class Normalizer:
         rows: Iterable[RawRow],
         mapping: dict[str, Any],
         *,
-        source_id,
-        import_run_id,
+        source_id: UUID,
+        import_run_id: UUID,
     ) -> NormalizedBatch:
         sessions: list[Session] = []
         model_calls: list[ModelCall] = []
@@ -40,6 +45,9 @@ class Normalizer:
         mmap = mapping.get("model_call", {})
         tmap = mapping.get("tool_call", {})
 
+        # Group rows by external_session_id so one session -> many rounds.
+        session_cache: dict[str, Session] = {}
+
         for row in rows:
             data = row.data
 
@@ -47,18 +55,22 @@ class Normalizer:
             if ext is None:
                 continue
 
-            session = Session(
-                id=new_id(),
-                source_id=source_id,
-                import_run_id=import_run_id,
-                external_session_id=str(ext),
-                agent=_get(data, smap, "agent"),
-                model=_get(data, smap, "model"),
-                started_at=_get(data, smap, "started_at"),
-                ended_at=_get(data, smap, "ended_at"),
-                metadata={},
-            )
-            sessions.append(session)
+            ext_str = str(ext)
+            session = session_cache.get(ext_str)
+            if session is None:
+                session = Session(
+                    id=new_id(),
+                    source_id=source_id,
+                    import_run_id=import_run_id,
+                    external_session_id=ext_str,
+                    agent=_get(data, smap, "agent"),
+                    model=_get(data, smap, "model"),
+                    started_at=_get(data, smap, "started_at"),
+                    ended_at=_get(data, smap, "ended_at"),
+                    metadata={},
+                )
+                session_cache[ext_str] = session
+                sessions.append(session)
 
             pt = _get(data, mmap, "prompt_tokens")
             ct = _get(data, mmap, "completion_tokens")
@@ -87,8 +99,12 @@ class Normalizer:
                         tool_name=str(t.get(tmap.get("tool_name", "tool_name"), "")),
                         input_chars=t.get(tmap.get("input_chars", "input_chars")),
                         result_chars=t.get(tmap.get("result_chars", "result_chars")),
-                        wall_latency_ms=t.get(tmap.get("wall_latency_ms", "tool_wall_latency_ms")),
-                        internal_latency_ms=t.get(tmap.get("internal_latency_ms", "tool_internal_latency_ms")),
+                        wall_latency_ms=t.get(
+                            tmap.get("wall_latency_ms", "tool_wall_latency_ms")
+                        ),
+                        internal_latency_ms=t.get(
+                            tmap.get("internal_latency_ms", "tool_internal_latency_ms")
+                        ),
                         is_error=bool(t.get(tmap.get("is_error", "is_error"), False)),
                         occurred_at=t.get(tmap.get("occurred_at", "emitted_at")),
                     )

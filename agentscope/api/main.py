@@ -6,7 +6,6 @@ The domain never imports from here; it only depends on its own ports.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -29,7 +28,28 @@ from .routers import dashboard, imports, mappings, sessions, sources
 
 def _build_uow_factory(settings: Settings) -> UoWFactory:
     engine = build_engine(settings.database_url)
-    Base.metadata.create_all(engine)
+
+    # Run Alembic migrations if available; fall back to create_all for tests.
+    try:
+        from sqlalchemy import text
+
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        # Try Alembic; if it fails (no migrations table yet), create all.
+        from pathlib import Path as _Path
+
+        import alembic.config as _ac
+        from alembic import command as _cmd
+
+        cfg = _ac.Config(str(_Path(__file__).resolve().parent.parent.parent / "alembic.ini"))
+        cfg.set_main_option("sqlalchemy.url", settings.database_url)
+        try:
+            _cmd.upgrade(cfg, "head")
+        except Exception:
+            Base.metadata.create_all(engine)
+    except Exception:
+        Base.metadata.create_all(engine)
+
     from sqlalchemy.orm import sessionmaker
 
     factory = sessionmaker(bind=engine, future=True)
@@ -72,12 +92,20 @@ def _file_reader_for(path: str) -> FileReaderPort:
 
 
 @asynccontextmanager
-async def _lifespan(app: FastAPI) -> Iterator[None]:
+async def _lifespan(app: FastAPI):
     settings = get_settings()
     app.state.settings = settings
     app.state.uow_factory = _build_uow_factory(settings)
     app.state.mapping_agent = _build_mapping_agent(settings)
     app.state.file_reader_for = _file_reader_for
+
+    # Seed the TraceLab source + mapping at startup.
+    from ..domain.seed import seed_defaults
+
+    with app.state.uow_factory() as uow:
+        seed_defaults(uow)
+        uow.commit()
+
     yield
 
 

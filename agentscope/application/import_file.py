@@ -16,7 +16,7 @@ from ..domain.contracts import (
     FileReaderPort,
     UoWFactory,
 )
-from ..domain.entities import ImportRun, Source, new_id
+from ..domain.entities import ImportRun, Rejection, Source, new_id
 from ..domain.services import Deduplicator, Normalizer, Validator
 
 
@@ -84,6 +84,36 @@ class ImportUseCase:
 
             rows = list(self._reader.read(path))
 
+            validation = self._validator.validate(mapping)
+            if not validation.is_valid:
+                for e in validation.errors:
+                    uow.imports.add_rejection(
+                        Rejection(
+                            id=new_id(),
+                            import_run_id=import_run.id,
+                            line_number=0,
+                            reason=f"invalid mapping: {e}",
+                            excerpt="",
+                        )
+                    )
+                uow.commit()
+                return ImportReport(
+                    import_id=import_run.id,
+                    source_id=source.id,
+                    filename=import_run.filename,
+                    file_hash=file_hash,
+                    status="rejected",
+                    rows_read=len(rows),
+                    sessions_imported=0,
+                    model_calls_imported=0,
+                    tool_calls_imported=0,
+                    duplicates=0,
+                    rejections=[
+                        {"line": 0, "reason": e, "excerpt": ""}
+                        for e in validation.errors
+                    ],
+                )
+
             normalized = self._normalizer.normalize(
                 rows,
                 mapping,
@@ -93,16 +123,51 @@ class ImportUseCase:
 
             existing_keys = {
                 s.natural_key
-                for s in uow.sessions.list_sessions(source_id=source.id, limit=10**6)
+                for s in uow.sessions.list_sessions(
+                    source_id=source.id, limit=10**6
+                )
             }
             dedup = self._deduplicator.deduplicate(normalized.sessions, existing_keys)
 
+            new_session_ids = {s.id for s in dedup.new_sessions}
+            new_model_calls = [
+                c for c in normalized.model_calls if c.session_id in new_session_ids
+            ]
+            new_tool_calls = [
+                t for t in normalized.tool_calls if t.session_id in new_session_ids
+            ]
+
             for s in dedup.new_sessions:
                 uow.sessions.add_session(s)
-            for c in normalized.model_calls:
+            for c in new_model_calls:
                 uow.sessions.add_model_call(c)
-            for t in normalized.tool_calls:
+            for t in new_tool_calls:
                 uow.sessions.add_tool_call(t)
+
+            rejections_data: list[dict[str, Any]] = []
+            for row in rows:
+                ext = row.data.get(
+                    mapping.get("session", {}).get("external_session_id")
+                )
+                if ext is None:
+                    reason = "missing external_session_id"
+                    excerpt = str(row.data)[:200]
+                    uow.imports.add_rejection(
+                        Rejection(
+                            id=new_id(),
+                            import_run_id=import_run.id,
+                            line_number=row.line_number,
+                            reason=reason,
+                            excerpt=excerpt,
+                        )
+                    )
+                    rejections_data.append(
+                        {
+                            "line": row.line_number,
+                            "reason": reason,
+                            "excerpt": excerpt,
+                        }
+                    )
 
             report = ImportReport(
                 import_id=import_run.id,
@@ -112,9 +177,10 @@ class ImportUseCase:
                 status="ok",
                 rows_read=len(rows),
                 sessions_imported=len(dedup.new_sessions),
-                model_calls_imported=len(normalized.model_calls),
-                tool_calls_imported=len(normalized.tool_calls),
+                model_calls_imported=len(new_model_calls),
+                tool_calls_imported=len(new_tool_calls),
                 duplicates=dedup.duplicate_count,
+                rejections=rejections_data,
                 is_duplicate_run=False,
             )
             uow.commit()
