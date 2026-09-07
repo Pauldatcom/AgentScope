@@ -16,17 +16,34 @@ services:
       timeout: 5s
       retries: 10
 
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: agentscope_pgadmin
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agentscope_api
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@agentscope.local
-      PGADMIN_DEFAULT_PASSWORD: agentscope
+      DATABASE_URL: postgresql+psycopg://agentscope:agentscope@postgres:5432/agentscope
+      IA_PROVIDER: fake
+      IA_MODEL: fake-local
+      OPENROUTER_API_KEY: ""
+      CORS_ORIGINS: http://localhost:5173,http://localhost:8080
     ports:
-      - "5050:80"
+      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: agentscope_web
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    restart: unless-stopped
 
 volumes:
   agentscope_pgdata:
