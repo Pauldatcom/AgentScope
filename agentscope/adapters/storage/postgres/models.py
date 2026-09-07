@@ -7,7 +7,7 @@ The relational schema follows the model described in `docs/data_model.md`.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -50,7 +50,7 @@ class ImportRunORM(Base):
     file_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="started")
     summary: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
 
 class SessionORM(Base):

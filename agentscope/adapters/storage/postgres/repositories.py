@@ -237,6 +237,49 @@ class PostgresSessionRepository(SessionRepository):
         stmt = stmt.order_by(SessionORM.started_at.desc()).limit(limit).offset(offset)
         return [_orm_to_session(o) for o in self._session.scalars(stmt)]
 
+    def list_model_calls(self, session_ids: list) -> list[ModelCall]:
+        if not session_ids:
+            return []
+        ids = [_oid(sid) for sid in session_ids]
+        stmt = select(ModelCallORM).where(ModelCallORM.session_id.in_(ids))
+        return [
+            ModelCall(
+                id=UUID(c.id),
+                session_id=UUID(c.session_id),
+                round_index=c.round_index,
+                model=c.model,
+                prompt_tokens=c.prompt_tokens,
+                completion_tokens=c.completion_tokens,
+                cache_creation_tokens=c.cache_creation_tokens,
+                latency_ms=c.latency_ms,
+                is_error=c.is_error,
+                occurred_at=c.occurred_at,
+                raw_payload=c.raw_payload,
+            )
+            for c in self._session.scalars(stmt)
+        ]
+
+    def list_tool_calls(self, session_ids: list) -> list[ToolCall]:
+        if not session_ids:
+            return []
+        ids = [_oid(sid) for sid in session_ids]
+        stmt = select(ToolCallORM).where(ToolCallORM.session_id.in_(ids))
+        return [
+            ToolCall(
+                id=UUID(t.id),
+                session_id=UUID(t.session_id),
+                model_call_id=UUID(t.model_call_id) if t.model_call_id else None,
+                tool_name=t.tool_name,
+                input_chars=t.input_chars,
+                result_chars=t.result_chars,
+                wall_latency_ms=t.wall_latency_ms,
+                internal_latency_ms=t.internal_latency_ms,
+                is_error=t.is_error,
+                occurred_at=t.occurred_at,
+            )
+            for t in self._session.scalars(stmt)
+        ]
+
     def get_session_detail(self, session_id) -> dict | None:
         orm = self._session.get(SessionORM, _oid(session_id))
         if orm is None:

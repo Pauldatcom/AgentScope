@@ -15,7 +15,7 @@ One row in each table has a precise meaning documented in `docs/data_model.md`.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -42,7 +42,7 @@ class ImportRun:
     file_hash: str
     status: str
     summary: dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property
     def key(self) -> str:

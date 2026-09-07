@@ -41,12 +41,9 @@ class DashboardUseCase:
         sessions = self._sessions.list_sessions(
             source_id=source_id, agent=agent, model=model, limit=10**6
         )
-        calls: list = []
-        tools: list = []
-        for s in sessions:
-            detail = self._sessions.get_session_detail(s.id) or {}
-            calls.extend(detail.get("model_calls", []))
-            tools.extend(detail.get("tool_calls", []))
+        session_ids = [s.id for s in sessions]
+        calls = self._sessions.list_model_calls(session_ids)
+        tools = self._sessions.list_tool_calls(session_ids)
 
         indicators = {
             "tokens_by_model": [

@@ -7,6 +7,7 @@ Skipped automatically if DATABASE_URL is not reachable.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -50,11 +51,13 @@ def postgres_uow_factory():
 _TRACELAB_MAPPING = {
     "session": {
         "external_session_id": "session_id",
-        "model": "provider",
+        "agent": "provider",
+        "model": "model",
     },
     "model_call": {
-        "round_index": "round_id",
-        "prompt_tokens": "input_tokens",
+        "round_index": "round_index",
+        "model": "model",
+        "prompt_tokens": "input_tokens_total",
         "completion_tokens": "output_tokens",
     },
     "tool_call": {
@@ -68,7 +71,7 @@ _TRACELAB_MAPPING = {
 def test_import_tracelab_jsonl_then_reimport_is_idempotent(postgres_uow_factory, tmp_path: Path):
     source = Source(
         id=uuid4(), name="tracelab", version="v0.0.1",
-        retrieved_at=__import__("datetime").datetime.utcnow(),
+        retrieved_at=datetime.now(UTC),
         method="manual download", license="CC-BY-4.0",
     )
     with postgres_uow_factory() as uow:
@@ -76,12 +79,12 @@ def test_import_tracelab_jsonl_then_reimport_is_idempotent(postgres_uow_factory,
         uow.commit()
 
     rows = [
-        {"session_id": "s-1", "provider": "claude", "round_id": 0,
-         "input_tokens": 10, "output_tokens": 5, "tools": []},
-        {"session_id": "s-1", "provider": "claude", "round_id": 1,
-         "input_tokens": 20, "output_tokens": 8, "tools": []},
-        {"session_id": "s-2", "provider": "codex", "round_id": 0,
-         "input_tokens": 30, "output_tokens": 3, "tools": []},
+        {"session_id": "s-1", "provider": "claude", "model": "claude-3-5",
+         "round_index": 0, "input_tokens_total": 10, "output_tokens": 5, "tools": []},
+        {"session_id": "s-1", "provider": "claude", "model": "claude-3-5",
+         "round_index": 1, "input_tokens_total": 20, "output_tokens": 8, "tools": []},
+        {"session_id": "s-2", "provider": "codex", "model": "gpt-4o",
+         "round_index": 0, "input_tokens_total": 30, "output_tokens": 3, "tools": []},
     ]
     path = tmp_path / "trace.jsonl"
     path.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
@@ -100,7 +103,7 @@ def test_import_tracelab_jsonl_then_reimport_is_idempotent(postgres_uow_factory,
 def test_indicator_stays_correct_after_join_and_filter(postgres_uow_factory, tmp_path: Path):
     source = Source(
         id=uuid4(), name="tracelab", version="v0.0.1",
-        retrieved_at=__import__("datetime").datetime.utcnow(),
+        retrieved_at=datetime.now(UTC),
         method="manual download", license="CC-BY-4.0",
     )
     with postgres_uow_factory() as uow:
@@ -108,10 +111,10 @@ def test_indicator_stays_correct_after_join_and_filter(postgres_uow_factory, tmp
         uow.commit()
 
     rows = [
-        {"session_id": "s-1", "provider": "claude", "round_id": 0,
-         "input_tokens": 100, "output_tokens": 50, "tools": []},
-        {"session_id": "s-2", "provider": "codex", "round_id": 0,
-         "input_tokens": 200, "output_tokens": 100, "tools": []},
+        {"session_id": "s-1", "provider": "claude", "model": "claude-3-5",
+         "round_index": 0, "input_tokens_total": 100, "output_tokens": 50, "tools": []},
+        {"session_id": "s-2", "provider": "codex", "model": "gpt-4o",
+         "round_index": 0, "input_tokens_total": 200, "output_tokens": 100, "tools": []},
     ]
     path = tmp_path / "trace2.jsonl"
     path.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
