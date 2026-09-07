@@ -34,6 +34,13 @@ async def upload_file(
     except json.JSONDecodeError as exc:
         raise HTTPException(400, f"invalid mapping_json: {exc}") from exc
 
+    # If the mapping is empty, try to load the active mapping for the source.
+    if not mapping:
+        with request.app.state.uow_factory() as uow:
+            active = uow.mappings.get_active_mapping(source_id)
+            if active is not None:
+                mapping = active.mapping
+
     suffix = Path(file.filename or "").suffix
     fd, tmp_path = tempfile.mkstemp(suffix=suffix)
     try:
