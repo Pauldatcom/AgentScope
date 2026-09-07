@@ -7,14 +7,14 @@ import tempfile
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 from ...application import (
     AnalyzeUseCase,
     ApplyMappingUseCase,
     MappingManagementUseCase,
 )
-from ..schemas import AnalysisOut, ApplyMappingIn, ApplyMappingOut, MappingIn, MappingOut
+from ..schemas import AnalysisOut, ApplyMappingOut, MappingIn, MappingOut
 
 router = APIRouter(prefix="/mappings", tags=["mappings"])
 
@@ -95,9 +95,25 @@ async def analyze_unknown(
 @router.post("/apply", response_model=ApplyMappingOut)
 async def apply_mapping(
     request: Request,
-    payload: ApplyMappingIn,
     file: UploadFile = File(...),
+    mapping_json: str = Form("{}"),
+    source_id: str = Form(""),
+    preview_rows: int = Form(5),
 ):
+    import json as _json
+
+    try:
+        mapping = _json.loads(mapping_json)
+    except _json.JSONDecodeError as exc:
+        raise HTTPException(400, f"invalid mapping_json: {exc}") from exc
+
+    from uuid import UUID as _UUID
+
+    try:
+        sid = _UUID(source_id) if source_id else _UUID(int=0)
+    except ValueError as exc:
+        raise HTTPException(400, f"invalid source_id: {exc}") from exc
+
     suffix = Path(file.filename or "").suffix
     fd, tmp_path = tempfile.mkstemp(suffix=suffix)
     try:
@@ -107,10 +123,10 @@ async def apply_mapping(
         uc = ApplyMappingUseCase(reader=reader)
         result = uc.preview(
             tmp_path,
-            payload.mapping,
-            source_id=payload.source_id,
-            import_run_id=payload.source_id,
-            preview_rows=payload.preview_rows,
+            mapping,
+            source_id=sid,
+            import_run_id=sid,
+            preview_rows=preview_rows,
         )
     finally:
         try:

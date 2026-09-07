@@ -44,9 +44,70 @@ This mapping is seeded at API startup (see `agentscope/domain/seed.py`).
 When `mapping_json` is empty in `POST /imports/upload`, the active mapping
 for the source is loaded automatically.
 
-## SWE-chat (added in day 3)
+## SWE-chat
 
 Source: <https://huggingface.co/datasets/SALT-NLP/SWE-chat>.
 
-(To be completed in issue #18 — the AI assistant proposes the mapping from
-the UI; the validated version is recorded here.)
+SWE-chat rassemble des conversations de développement avec appels d'outils.
+La structure diffère de TraceLab (pas de `session_id` au sens TraceLab ;
+les conversations sont organisées par `repo` + `instance_id`). Le mapping
+suivant est proposé par l'assistant IA et validé depuis l'UI :
+
+```json
+{
+  "session": {
+    "external_session_id": "instance_id",
+    "agent": "agent",
+    "model": "model"
+  },
+  "model_call": {
+    "round_index": "turn_id",
+    "prompt_tokens": "input_tokens",
+    "completion_tokens": "output_tokens"
+  },
+  "tool_call": {
+    "tools_path": "tool_calls",
+    "tool_name": "tool_name",
+    "wall_latency_ms": "latency_ms",
+    "is_error": "error"
+  }
+}
+```
+
+## Trace Commons (structure inconnue)
+
+Source: <https://huggingface.co/datasets/trace-commons/agent-traces>.
+
+Trace Commons conserve des sessions dans les formats natifs de différents
+agents. La structure varie — aucun connecteur codé à la main n'est requis.
+L'assistant IA profile les champs et propose un mapping ; l'utilisateur
+corrige et valide depuis l'UI.
+
+Exemple de mapping pour un format `trace_commons` (testé dans
+`tests/e2e/test_unknown_structure_import.py`) :
+
+```json
+{
+  "session": {
+    "external_session_id": "trace_id",
+    "agent": "agent_name",
+    "model": "llm_model"
+  },
+  "model_call": {
+    "round_index": "interaction_seq",
+    "model": "llm_model",
+    "prompt_tokens": "input_token_count",
+    "completion_tokens": "output_token_count"
+  },
+  "tool_call": {
+    "tools_path": "tool_invocations",
+    "tool_name": "tool",
+    "wall_latency_ms": "duration_ms",
+    "is_error": "failed"
+  }
+}
+```
+
+L'application signale les champs non mappés comme ambiguïtés. Un import
+partiel correctement expliqué est préférable à un import apparemment réussi
+qui produit des chiffres faux.
