@@ -15,7 +15,7 @@ export function apiUrl(path: string): string {
   return `${API_BASE}${suffix}`;
 }
 
-async function readApiError(response: Response): Promise<string> {
+export async function readApiError(response: Response): Promise<string> {
   const text = await response.text();
   try {
     const parsed: unknown = JSON.parse(text);
@@ -33,7 +33,7 @@ async function readApiError(response: Response): Promise<string> {
   return text || response.statusText;
 }
 
-async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(apiUrl(path), init);
   if (!response.ok) {
     throw new Error(await readApiError(response));
