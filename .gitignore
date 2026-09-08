@@ -67,7 +67,13 @@ web/node_modules/
 web/dist/
 web/build/
 web/.vite/
+web/tsconfig.tsbuildinfo
+# Mock data layer — local-only, for previewing the UI without the backend.
+web/src/mock/
 *.local
+
+# Node (root)
+node_modules/
 
 # OS
 .DS_Store
