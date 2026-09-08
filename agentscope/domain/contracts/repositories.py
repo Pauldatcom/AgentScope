@@ -59,6 +59,71 @@ class SessionRepository(ABC):
     @abstractmethod
     def get_session_detail(self, session_id) -> dict | None: ...
 
+    @abstractmethod
+    def aggregate_dashboard(
+        self,
+        *,
+        source_id=None,
+        agent: str | None = None,
+        model: str | None = None,
+    ) -> dict: ...
+
+    @abstractmethod
+    def aggregate_agent_breakdown(
+        self,
+        *,
+        source_id=None,
+        agent: str | None = None,
+        model: str | None = None,
+    ) -> list[dict]: ...
+
+    @abstractmethod
+    def aggregate_tool_breakdown(
+        self,
+        *,
+        source_id=None,
+        agent: str | None = None,
+        model: str | None = None,
+    ) -> list[dict]: ...
+
+    @abstractmethod
+    def aggregate_model_breakdown(
+        self,
+        *,
+        source_id=None,
+        agent: str | None = None,
+        model: str | None = None,
+    ) -> list[dict]: ...
+
+    @abstractmethod
+    def aggregate_activity_timeseries(
+        self,
+        *,
+        source_id=None,
+        agent: str | None = None,
+        model: str | None = None,
+    ) -> list[dict]: ...
+
+    @abstractmethod
+    def aggregate_data_completeness(
+        self,
+        *,
+        source_id=None,
+        agent: str | None = None,
+        model: str | None = None,
+    ) -> dict: ...
+
+    @abstractmethod
+    def session_list_enriched(
+        self,
+        *,
+        source_id=None,
+        agent: str | None = None,
+        model: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]: ...
+
 
 class ImportRepository(ABC):
     """Read/write import runs and rejections."""
@@ -77,6 +142,9 @@ class ImportRepository(ABC):
 
     @abstractmethod
     def get_import(self, import_id) -> ImportRun | None: ...
+
+    @abstractmethod
+    def list_rejections(self, import_id=None, limit: int = 100) -> list[Rejection]: ...
 
 
 class MappingRepository(ABC):

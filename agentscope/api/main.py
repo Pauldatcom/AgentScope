@@ -23,30 +23,52 @@ from ..domain.contracts import (
     MappingAgentPort,
     UoWFactory,
 )
-from .routers import dashboard, imports, mappings, sessions, sources
+from .routers import (
+    activity,
+    agents,
+    dashboard,
+    data_quality,
+    imports,
+    mappings,
+    models,
+    sessions,
+    sources,
+    tools,
+)
+from .routers import settings as settings_router
 
 
 def _build_uow_factory(settings: Settings) -> UoWFactory:
     engine = build_engine(settings.database_url)
 
-    # Run Alembic migrations if available; fall back to create_all for tests.
+    # Run Alembic migrations if the DB is not yet at head; otherwise skip
+    # (avoids acquiring a table lock on a large DB).
     try:
         from sqlalchemy import text
 
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        # Try Alembic; if it fails (no migrations table yet), create all.
+
+        # Check if alembic_version table exists and is at head.
         from pathlib import Path as _Path
 
         import alembic.config as _ac
         from alembic import command as _cmd
+        from alembic.runtime.migration import MigrationContext
 
-        cfg = _ac.Config(str(_Path(__file__).resolve().parent.parent.parent / "alembic.ini"))
+        cfg = _ac.Config(
+            str(_Path(__file__).resolve().parent.parent.parent / "alembic.ini")
+        )
         cfg.set_main_option("sqlalchemy.url", settings.database_url)
-        try:
+
+        with engine.connect() as conn:
+            mc = MigrationContext.configure(conn)
+            current_rev = mc.get_current_revision()
+
+        if current_rev is None:
+            # No migrations table yet — run upgrade from scratch.
             _cmd.upgrade(cfg, "head")
-        except Exception:
-            Base.metadata.create_all(engine)
+        # If current_rev is not None, the DB is already migrated — skip.
     except Exception:
         Base.metadata.create_all(engine)
 
@@ -128,6 +150,12 @@ def create_app() -> FastAPI:
     app.include_router(sessions.router)
     app.include_router(sources.router)
     app.include_router(dashboard.router)
+    app.include_router(agents.router)
+    app.include_router(tools.router)
+    app.include_router(models.router)
+    app.include_router(data_quality.router)
+    app.include_router(settings_router.router)
+    app.include_router(activity.router)
     return app
 
 

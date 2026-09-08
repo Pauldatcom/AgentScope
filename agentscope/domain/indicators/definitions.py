@@ -55,4 +55,22 @@ INDICATORS: dict[str, IndicatorDefinition] = {
         missing="Sessions where error status is unknown are excluded from both "
                 "numerator and denominator, never counted as 0%.",
     ),
+    "avg_duration": IndicatorDefinition(
+        id="avg_duration",
+        name="Average session duration",
+        calc="AVG(ended_at - started_at)",
+        unit="ms",
+        scope="session rows with non-null start & end",
+        missing="Sessions with null start/end are excluded — "
+                "N/A when none qualify, never 0.",
+    ),
+    "cache_rate": IndicatorDefinition(
+        id="cache_rate",
+        name="Cache hit rate",
+        calc="COUNT(cached_calls) / COUNT(calls_with_cache_field)",
+        unit="percent",
+        scope="model_call rows with cache tokens reported",
+        missing="Providers without a cache field are excluded. "
+                "N/A when none report cache — never 0.",
+    ),
 }

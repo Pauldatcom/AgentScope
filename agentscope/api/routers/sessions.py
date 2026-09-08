@@ -25,12 +25,10 @@ def list_sessions(
     offset: int = Query(0, ge=0),
     uow=Depends(_uow),
 ):
-    return [
-        SessionOut(**s.__dict__)
-        for s in uow.sessions.list_sessions(
-            source_id=source_id, agent=agent, model=model, limit=limit, offset=offset
-        )
-    ]
+    rows = uow.sessions.session_list_enriched(
+        source_id=source_id, agent=agent, model=model, limit=limit, offset=offset
+    )
+    return [SessionOut(**r) for r in rows]
 
 
 @router.get("/{session_id}", response_model=SessionDetail)
