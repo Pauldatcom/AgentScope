@@ -1,44 +1,39 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
-import { ImportPage } from "./pages/ImportPage";
-import { DashboardPage } from "./pages/DashboardPage";
-import { SessionPage } from "./pages/SessionPage";
-import { MappingAssistantPage } from "./pages/MappingAssistantPage";
-import "./index.css";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-function Nav() {
-  return (
-    <nav className="border-b border-slate-200 bg-white px-6 py-3">
-      <Link to="/" className="font-semibold text-slate-900 mr-4">
-        AgentScope
-      </Link>
-      <Link to="/dashboard" className="text-slate-600 hover:text-slate-900 mr-4">
-        Dashboard
-      </Link>
-      <Link to="/imports" className="text-slate-600 hover:text-slate-900 mr-4">
-        Import
-      </Link>
-      <Link to="/assistant" className="text-slate-600 hover:text-slate-900">
-        AI Assistant
-      </Link>
-    </nav>
-  );
-}
+import { AppShell } from "@/components/app-shell";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { OverviewPage } from "@/pages/OverviewPage";
+import { SessionsPage } from "@/pages/SessionsPage";
+import { SessionPage } from "@/pages/SessionPage";
+import { AgentsPage } from "@/pages/AgentsPage";
+import { ToolsPage } from "@/pages/ToolsPage";
+import { ModelsPage } from "@/pages/ModelsPage";
+import { ImportsPage } from "@/pages/ImportsPage";
+import { DataQualityPage } from "@/pages/DataQualityPage";
+import { SettingsPage } from "@/pages/SettingsPage";
+
+import "./index.css";
 
 function App() {
   return (
     <BrowserRouter>
-      <Nav />
-      <main className="container mx-auto px-6 py-6">
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/imports" element={<ImportPage />} />
-          <Route path="/assistant" element={<MappingAssistantPage />} />
-          <Route path="/sessions/:id" element={<SessionPage />} />
-        </Routes>
-      </main>
+      <TooltipProvider delayDuration={150}>
+        <AppShell>
+          <Routes>
+            <Route path="/" element={<OverviewPage />} />
+            <Route path="/sessions" element={<SessionsPage />} />
+            <Route path="/sessions/:id" element={<SessionPage />} />
+            <Route path="/agents" element={<AgentsPage />} />
+            <Route path="/tools" element={<ToolsPage />} />
+            <Route path="/models" element={<ModelsPage />} />
+            <Route path="/imports" element={<ImportsPage />} />
+            <Route path="/data-quality" element={<DataQualityPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Routes>
+        </AppShell>
+      </TooltipProvider>
     </BrowserRouter>
   );
 }
@@ -46,5 +41,5 @@ function App() {
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>
+  </React.StrictMode>,
 );
