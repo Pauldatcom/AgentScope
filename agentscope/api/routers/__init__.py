@@ -1,4 +1,28 @@
 """Routers."""
-from . import dashboard, imports, mappings, sessions, sources
+from . import (
+    activity,
+    agents,
+    dashboard,
+    data_quality,
+    imports,
+    mappings,
+    models,
+    sessions,
+    settings,
+    sources,
+    tools,
+)
 
-__all__ = ["dashboard", "imports", "mappings", "sessions", "sources"]
+__all__ = [
+    "activity",
+    "agents",
+    "dashboard",
+    "data_quality",
+    "imports",
+    "mappings",
+    "models",
+    "sessions",
+    "settings",
+    "sources",
+    "tools",
+]

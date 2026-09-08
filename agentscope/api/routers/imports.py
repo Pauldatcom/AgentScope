@@ -1,4 +1,4 @@
-"""Imports router — upload a file and run the import pipeline."""
+"""Imports router — upload + list past import runs and rejections."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ import tempfile
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 from ...application import ImportUseCase
-from ..schemas import ImportReportOut
+from ..schemas import ImportReportOut, ImportRunOut, RejectionOut
 
 router = APIRouter(prefix="/imports", tags=["imports"])
 
@@ -18,6 +18,49 @@ router = APIRouter(prefix="/imports", tags=["imports"])
 def _uow(request: Request):
     with request.app.state.uow_factory() as uow:
         yield uow
+
+
+def _to_import_run_out(run) -> ImportRunOut:
+    summary = run.summary or {}
+    return ImportRunOut(
+        id=run.id,
+        source_id=run.source_id,
+        filename=run.filename,
+        file_hash=run.file_hash,
+        status=run.status,
+        rows_read=summary.get("rows_read", 0),
+        sessions_imported=summary.get("sessions_imported", 0),
+        model_calls_imported=summary.get("model_calls_imported", 0),
+        tool_calls_imported=summary.get("tool_calls_imported", 0),
+        duplicates=summary.get("duplicates", 0),
+        created_at=run.created_at,
+    )
+
+
+@router.get("", response_model=list[ImportRunOut])
+def list_imports(
+    limit: int = 50,
+    uow=Depends(_uow),
+):
+    return [_to_import_run_out(r) for r in uow.imports.list_imports(limit=limit)]
+
+
+@router.get("/{import_id}/rejections", response_model=list[RejectionOut])
+def list_rejections(
+    import_id: UUID,
+    limit: int = 100,
+    uow=Depends(_uow),
+):
+    return [
+        RejectionOut(
+            id=r.id,
+            import_run_id=r.import_run_id,
+            line_number=r.line_number,
+            reason=r.reason,
+            excerpt=r.excerpt,
+        )
+        for r in uow.imports.list_rejections(import_id=import_id, limit=limit)
+    ]
 
 
 @router.post("/upload", response_model=ImportReportOut)
