@@ -61,6 +61,7 @@ docker compose up -d postgres
 
 # 3. Install dependencies
 make dev                    # uv sync --extra dev
+pnpm install                 # root deps (concurrently) + web deps
 
 # 4. Run database migrations
 make migrate                # alembic upgrade head
@@ -68,12 +69,12 @@ make migrate                # alembic upgrade head
 # 5. (Optional) Fetch a TraceLab sample (1000 lines, gitignored)
 bash scripts/fetch_sample.sh
 
-# 6. Start the API (terminal 1)
-make dev-api                # http://localhost:8000
-
-# 7. Start the frontend (terminal 2)
-make dev-web                # http://localhost:5173
+# 6. Start API + frontend together
+pnpm dev                    # API → http://localhost:8000, web → http://localhost:5173
 ```
+
+`pnpm dev` runs both processes concurrently (blue = API, green = web).
+Use `make dev-api` / `make dev-web` to start them separately.
 
 ### Full-stack deployment (Docker Compose)
 
@@ -162,8 +163,10 @@ import → verify → normalize → explore
 ```bash
 make test                   # unit + e2e tests (no Postgres, no network)
 make test-integration       # integration tests (requires Postgres)
-make lint                   # ruff
-make typecheck              # mypy
+make lint                   # ruff (Python) + eslint (frontend)
+make typecheck              # mypy (Python) + tsc (frontend)
+pnpm lint                   # frontend only (eslint)
+pnpm typecheck              # frontend only (tsc --noEmit)
 ```
 
 41 tests, 82% coverage on `agentscope/`. CI runs on every pull request.
