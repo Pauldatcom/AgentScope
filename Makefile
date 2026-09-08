@@ -1,4 +1,4 @@
-.PHONY: help install dev test test-integration lint typecheck migrate dev-api dev-web build up down clean
+.PHONY: help install dev test test-integration lint typecheck migrate dev-api dev-web dev-all build up down clean
 
 help:
 	@echo "AgentScope — available targets:"
@@ -12,6 +12,7 @@ help:
 	@echo "  make migrate          Run Alembic migrations (upgrade head)"
 	@echo "  make dev-api          Start the API in development mode"
 	@echo "  make dev-web          Start the frontend in development mode"
+	@echo "  make dev-all          Start API + frontend together (needs: npm i concurrently)"
 	@echo "  make build            Build the frontend for production"
 	@echo "  make up               Start the full stack via Docker Compose"
 	@echo "  make down             Stop the Docker Compose stack"
@@ -42,10 +43,13 @@ dev-api:
 	uv run uvicorn agentscope.api.main:app --reload --port 8000
 
 dev-web:
-	cd web && npm run dev
+	cd web && pnpm dev
+
+dev-all:
+	pnpm dev
 
 build:
-	cd web && npm run build
+	cd web && pnpm build
 
 up:
 	docker compose up -d --build

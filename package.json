@@ -1,0 +1,20 @@
+{
+  "name": "agentscope",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Explore and normalize traces from coding AI agents.",
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"pnpm run dev:api\" \"pnpm run dev:web\"",
+    "dev:api": "uv run uvicorn agentscope.api.main:app --reload --port 8000",
+    "dev:web": "pnpm --filter agentscope-web dev",
+    "build": "pnpm --filter agentscope-web build",
+    "test": "uv run pytest tests/unit tests/e2e -v",
+    "test:integration": "uv run pytest -m integration -v",
+    "lint": "uv run ruff check . && pnpm --filter agentscope-web lint",
+    "typecheck": "uv run mypy agentscope && pnpm --filter agentscope-web typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
