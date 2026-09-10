@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -65,8 +66,8 @@ class Normalizer:
                     external_session_id=ext_str,
                     agent=_get(data, smap, "agent"),
                     model=_get(data, smap, "model"),
-                    started_at=_get(data, smap, "started_at"),
-                    ended_at=_get(data, smap, "ended_at"),
+                    started_at=_as_datetime(_get(data, smap, "started_at")),
+                    ended_at=_as_datetime(_get(data, smap, "ended_at")),
                     metadata={},
                 )
                 session_cache[ext_str] = session
@@ -84,19 +85,23 @@ class Normalizer:
                 cache_creation_tokens=_get(data, mmap, "cache_creation_tokens"),
                 latency_ms=_get(data, mmap, "latency_ms"),
                 is_error=bool(_get(data, mmap, "is_error") or False),
-                occurred_at=_get(data, mmap, "occurred_at"),
+                occurred_at=_as_datetime(_get(data, mmap, "occurred_at")),
                 raw_payload=data,
             )
             model_calls.append(call)
 
-            tools = data.get(tmap.get("tools_path", "tools")) or []
+            tools = _tool_records(data, tmap)
+            name_key = tmap.get("tool_name", "tool_name")
             for t in tools:
+                tool_name = str(t.get(name_key, "") or "")
+                if not tool_name:
+                    continue
                 tool_calls.append(
                     ToolCall(
                         id=new_id(),
                         session_id=session.id,
                         model_call_id=call.id,
-                        tool_name=str(t.get(tmap.get("tool_name", "tool_name"), "")),
+                        tool_name=tool_name,
                         input_chars=t.get(tmap.get("input_chars", "input_chars")),
                         result_chars=t.get(tmap.get("result_chars", "result_chars")),
                         wall_latency_ms=t.get(
@@ -106,11 +111,51 @@ class Normalizer:
                             tmap.get("internal_latency_ms", "tool_internal_latency_ms")
                         ),
                         is_error=bool(t.get(tmap.get("is_error", "is_error"), False)),
-                        occurred_at=t.get(tmap.get("occurred_at", "emitted_at")),
+                        occurred_at=_as_datetime(
+                            t.get(tmap.get("occurred_at", "emitted_at"))
+                        ),
                     )
                 )
 
         return NormalizedBatch(sessions, model_calls, tool_calls)
+
+
+def _tool_records(data: dict[str, Any], tmap: dict[str, Any]) -> list[dict[str, Any]]:
+    """Resolve tool rows from either a nested list or a flat column on the record.
+
+    Nested traces (TraceLab) set ``tools_path`` to an array of tool objects.
+    Flat tables (SWE-chat conversations, CSV) omit ``tools_path`` and put
+    ``tool_name`` on the same row; those rows become a single tool record.
+    """
+
+    nested_path = tmap.get("tools_path") or ""
+    if nested_path:
+        raw = data.get(nested_path)
+        if isinstance(raw, list):
+            return [t for t in raw if isinstance(t, dict)]
+        return []
+
+    name_key = tmap.get("tool_name")
+    if not name_key:
+        return []
+    value = _get(data, tmap, "tool_name")
+    if value in (None, ""):
+        return []
+    return [data]
+
+
+def _as_datetime(value: Any) -> Any:
+    if value is None or isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            return datetime.fromisoformat(text)
+        except ValueError:
+            return None
+    return value
 
 
 def _get(data: dict[str, Any], mapping: dict[str, Any], field: str) -> Any:

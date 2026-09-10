@@ -46,105 +46,53 @@ import {
 } from "@/api";
 import { useApi } from "@/hooks/useApi";
 import {
+  engineMappingFromRows,
+  rowsFromProposal,
+  TARGET_OPTIONS,
+  type MappingRow,
+} from "@/mapping";
+import {
   cn,
   formatNumber,
   relativeTime,
 } from "@/lib/utils";
 
 type Step = "upload" | "analyze" | "map" | "validate" | "import";
-type SourceType = "json" | "jsonl" | "csv" | "log" | "api";
-type Outcome =
-  | null
-  | "success"
-  | "warnings"
-  | "incomplete"
-  | "non-comparable"
-  | "duplicate"
-  | "error";
+type SourceType = "json" | "jsonl" | "csv" | "parquet";
+type Outcome = null | "success" | "warnings" | "duplicate" | "error";
 
-interface MappingField {
-  name: string;
-  dtype: string;
-  sample: string;
-  nullable: boolean;
-}
-
-interface MappingEntry {
-  sourceField: string;
-  targetField: string | null;
-  confidence: number;
-  note?: string;
-}
-
-interface MappingProposal {
-  sourceName: string;
-  rowCount: number;
-  fields: MappingField[];
-  proposal: {
-    explanation: string;
-    ambiguities: string[];
-    mappings: MappingEntry[];
+interface PreviewSession {
+  session?: {
+    external_session_id?: string;
+    agent?: string | null;
+    model?: string | null;
   };
+  model_calls?: {
+    prompt_tokens?: number | null;
+    completion_tokens?: number | null;
+    model?: string | null;
+  }[];
+  tool_calls?: { tool_name?: string }[];
 }
-
-const MAPPING_PROPOSAL: MappingProposal = {
-  sourceName: "Trace Commons",
-  rowCount: 8421,
-  fields: [
-    { name: "sid", dtype: "string", sample: "7f3e2a1c-...", nullable: false },
-    { name: "ts", dtype: "datetime", sample: "2024-11-02T14:08:21Z", nullable: false },
-    { name: "agent", dtype: "string", sample: "devin", nullable: true },
-    { name: "llm", dtype: "string", sample: "openai/gpt-5", nullable: true },
-    { name: "tool", dtype: "string", sample: "shell", nullable: true },
-    { name: "toks_in", dtype: "int", sample: "1820", nullable: true },
-    { name: "toks_out", dtype: "int", sample: "642", nullable: true },
-    { name: "latency", dtype: "float", sample: "1.83", nullable: true },
-    { name: "cache", dtype: "int", sample: "0", nullable: true },
-    { name: "raw", dtype: "json", sample: "{...}", nullable: true },
-  ],
-  proposal: {
-    explanation:
-      "Detected 8,421 rows keyed by 'sid' (session id). 'ts' maps to started_at; 'agent' maps to session.agent; 'llm' maps to model_call.model (strip the provider prefix); 'tool' maps to tool_call.tool_name. Token fields map cleanly. Note: 'tool' values are lowercase verbs (shell, edit) — not canonicalized to the AgentScope tool names, so this source is non-comparable for tool analysis.",
-    ambiguities: [
-      "'llm' contains provider-prefixed model names — mapping strips the prefix, which may collide for aliases.",
-      "'tool' uses lowercase verbs; cross-source tool comparison will be unreliable until a normalization rule is added.",
-      "'latency' is in seconds, not milliseconds — a unit conversion is applied on import.",
-      "'raw' is a free-form JSON blob — it will be stored in raw_payload and excluded from all indicators.",
-    ],
-    mappings: [
-      { sourceField: "sid", targetField: "session.external_session_id", confidence: 0.97 },
-      { sourceField: "ts", targetField: "session.started_at", confidence: 0.95 },
-      { sourceField: "agent", targetField: "session.agent", confidence: 0.88, note: "nullable — bucketed as 'unknown' when null" },
-      { sourceField: "llm", targetField: "model_call.model", confidence: 0.82, note: "strips provider prefix" },
-      { sourceField: "tool", targetField: "tool_call.tool_name", confidence: 0.61, note: "lowercase verbs, not canonicalized" },
-      { sourceField: "toks_in", targetField: "model_call.prompt_tokens", confidence: 0.9 },
-      { sourceField: "toks_out", targetField: "model_call.completion_tokens", confidence: 0.9 },
-      { sourceField: "latency", targetField: "model_call.latency_ms", confidence: 0.78, note: "×1000 to convert s → ms" },
-      { sourceField: "cache", targetField: "model_call.cache_creation_tokens", confidence: 0.74 },
-      { sourceField: "raw", targetField: "model_call.raw_payload", confidence: 0.99, note: "never used by indicators" },
-    ],
-  },
-};
 
 const STEPS: { id: Step; label: string; description: string }[] = [
-  { id: "upload", label: "Upload", description: "Drop a file or connect an API" },
-  { id: "analyze", label: "Analyze", description: "The AI inspects structure" },
+  { id: "upload", label: "Upload", description: "Drop a file and pick a source" },
+  { id: "analyze", label: "Analyze", description: "Inspect structure" },
   { id: "map", label: "Map fields", description: "Confirm field mapping" },
   { id: "validate", label: "Validate", description: "Preview normalized rows" },
-  { id: "import", label: "Import", description: "Persist & deduplicate" },
+  { id: "import", label: "Import", description: "Persist and deduplicate" },
 ];
 
 const SOURCE_TYPES: {
   id: SourceType;
   label: string;
   desc: string;
-  icon: typeof FileText;
+  accept: string;
 }[] = [
-  { id: "json", label: "JSON", desc: "Single JSON array or object", icon: FileText },
-  { id: "jsonl", label: "JSONL", desc: "One session per line", icon: FileText },
-  { id: "csv", label: "CSV", desc: "Header + rows", icon: FileText },
-  { id: "log", label: "Text logs", desc: "Unstructured agent logs", icon: FileText },
-  { id: "api", label: "API", desc: "Connect a live provider", icon: Database },
+  { id: "jsonl", label: "JSONL", desc: "One record per line", accept: ".jsonl,.json" },
+  { id: "json", label: "JSON", desc: "Array or object", accept: ".json,.jsonl" },
+  { id: "csv", label: "CSV", desc: "Header + rows", accept: ".csv" },
+  { id: "parquet", label: "Parquet", desc: "Columnar table", accept: ".parquet" },
 ];
 
 function Message({
@@ -192,14 +140,40 @@ function ConfidenceBar({ value }: { value: number }) {
       <div className="relative h-1.5 w-16 overflow-hidden rounded-full bg-muted">
         <div
           className={cn("absolute inset-y-0 left-0 rounded-full", tone)}
-          style={{ width: `${value * 100}%` }}
+          style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%` }}
         />
       </div>
       <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-        {Math.round(value * 100)}%
+        {value > 0 ? `${Math.round(value * 100)}%` : "—"}
       </span>
     </div>
   );
+}
+
+function sampleText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
+    const raw = JSON.stringify(value);
+    return raw.length > 48 ? `${raw.slice(0, 45)}…` : raw;
+  }
+  const text = String(value);
+  return text.length > 48 ? `${text.slice(0, 45)}…` : text;
+}
+
+function tokenLabel(calls: PreviewSession["model_calls"]): string {
+  let any = false;
+  let sum = 0;
+  for (const call of calls ?? []) {
+    if (call.prompt_tokens != null) {
+      any = true;
+      sum += Number(call.prompt_tokens);
+    }
+    if (call.completion_tokens != null) {
+      any = true;
+      sum += Number(call.completion_tokens);
+    }
+  }
+  return any ? formatNumber(sum) : "—";
 }
 
 export function ImportsPage() {
@@ -213,19 +187,36 @@ export function ImportsPage() {
   const [analyzing, setAnalyzing] = React.useState(false);
   const [validating, setValidating] = React.useState(false);
   const [importing, setImporting] = React.useState(false);
+  const [creatingSource, setCreatingSource] = React.useState(false);
+  const [showNewSource, setShowNewSource] = React.useState(false);
+  const [newSource, setNewSource] = React.useState({
+    name: "",
+    version: "",
+    method: "",
+    license: "",
+  });
   const [outcome, setOutcome] = React.useState<Outcome>(null);
-  const [apiUrl, setApiUrl] = React.useState("");
   const [analysis, setAnalysis] = React.useState<AnalysisOut | null>(null);
+  const [mappingRows, setMappingRows] = React.useState<MappingRow[]>([]);
   const [applyResult, setApplyResult] = React.useState<ApplyMappingOut | null>(
     null,
   );
+  const [analyzeError, setAnalyzeError] = React.useState<string | null>(null);
   const [applyError, setApplyError] = React.useState<string | null>(null);
+  const [sourceError, setSourceError] = React.useState<string | null>(null);
   const [importReport, setImportReport] =
     React.useState<ImportReportOut | null>(null);
   const [importError, setImportError] = React.useState<string | null>(null);
+  const [saveWarning, setSaveWarning] = React.useState<string | null>(null);
 
-  const { data: sources } = useApi<SourceOut[]>(() => api.fetchSources(), []);
-  const { data: imports } = useApi<ImportRunOut[]>(() => api.fetchImports(20), []);
+  const { data: sources, refetch: refetchSources } = useApi<SourceOut[]>(
+    () => api.fetchSources(),
+    [],
+  );
+  const { data: imports, refetch: refetchImports } = useApi<ImportRunOut[]>(
+    () => api.fetchImports(20),
+    [],
+  );
 
   React.useEffect(() => {
     if (!sourceId && sources && sources.length > 0) {
@@ -233,9 +224,17 @@ export function ImportsPage() {
     }
   }, [sources, sourceId]);
 
-  const displayRowCount = analysis?.row_count ?? MAPPING_PROPOSAL.rowCount;
-  const displayFieldCount =
-    analysis?.fields.length ?? MAPPING_PROPOSAL.fields.length;
+  const engineMapping = React.useMemo(
+    () => engineMappingFromRows(mappingRows),
+    [mappingRows],
+  );
+  const mappingJson = JSON.stringify(engineMapping, null, 2);
+  const selectedSource = (sources ?? []).find((s) => s.id === sourceId);
+  const accept =
+    SOURCE_TYPES.find((t) => t.id === sourceType)?.accept ?? ".jsonl,.json,.csv";
+  const sessionKey =
+    mappingRows.find((r) => r.targetField === "session.external_session_id")
+      ?.sourceField ?? analysis?.fields[0];
 
   const go = (next: Step) => {
     if (!completed.includes(step)) setCompleted((c) => [...c, step]);
@@ -249,62 +248,124 @@ export function ImportsPage() {
     setFile(null);
     setOutcome(null);
     setAnalysis(null);
+    setMappingRows([]);
     setApplyResult(null);
+    setAnalyzeError(null);
     setApplyError(null);
+    setSourceError(null);
     setImportReport(null);
     setImportError(null);
+    setSaveWarning(null);
   };
 
-  const buildMapping = (): Record<string, string | null> =>
-    Object.fromEntries(
-      MAPPING_PROPOSAL.proposal.mappings.map(
-        (m): [string, string | null] => [m.sourceField, m.targetField],
-      ),
-    );
+  const createSource = async () => {
+    if (!newSource.name.trim() || !newSource.version.trim() || !newSource.method.trim()) {
+      setSourceError("Name, version and retrieval method are required.");
+      return;
+    }
+    setCreatingSource(true);
+    setSourceError(null);
+    try {
+      const created = await api.createSource({
+        name: newSource.name.trim(),
+        version: newSource.version.trim(),
+        method: newSource.method.trim(),
+        license: newSource.license.trim() || null,
+      });
+      setSourceId(created.id);
+      setShowNewSource(false);
+      setNewSource({ name: "", version: "", method: "", license: "" });
+      await refetchSources();
+    } catch (err) {
+      setSourceError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreatingSource(false);
+    }
+  };
 
   const startAnalyze = async () => {
-    if (!fileName && sourceType !== "api") return;
+    if (!file) {
+      setAnalyzeError("Choose a file first.");
+      return;
+    }
     setAnalyzing(true);
+    setAnalyzeError(null);
+    setAnalysis(null);
+    setMappingRows([]);
+    setApplyResult(null);
     go("analyze");
     try {
-      if (file) {
-        const result = await api.analyzeMapping(file);
-        setAnalysis(result);
-      }
-    } catch {
-      // fall back to local MAPPING_PROPOSAL
+      const result = await api.analyzeMapping(file);
+      setAnalysis(result);
+      setMappingRows(rowsFromProposal(result.fields, result.proposal.fields));
+    } catch (err) {
+      setAnalyzeError(err instanceof Error ? err.message : String(err));
     } finally {
       setAnalyzing(false);
     }
   };
 
-  const confirmMapping = () => go("validate");
-
-  const startValidate = async () => {
+  const previewMapping = async () => {
     if (!file) {
-      setApplyError("No file selected. Drop a file to validate.");
+      setApplyError("No file selected.");
+      return;
+    }
+    if (!sourceId) {
+      setApplyError("Select or create a destination source first.");
+      return;
+    }
+    if (!engineMapping.session.external_session_id) {
+      setApplyError("Map a source field to session.external_session_id.");
       return;
     }
     setValidating(true);
     setApplyError(null);
+    setSaveWarning(null);
     try {
       const result = await api.applyMapping(
         file,
-        JSON.stringify(buildMapping()),
+        JSON.stringify(engineMapping),
         sourceId,
       );
       setApplyResult(result);
-      go("import");
+      if (!result.is_valid) {
+        setApplyError(result.errors.join(" ") || "Mapping is invalid.");
+        return;
+      }
+      try {
+        await api.saveMapping({
+          source_id: sourceId,
+          mapping: engineMapping,
+          created_by: "ui",
+        });
+      } catch (err) {
+        setSaveWarning(
+          err instanceof Error
+            ? `Mapping preview is valid, but saving it failed: ${err.message}`
+            : "Mapping preview is valid, but saving it failed.",
+        );
+      }
     } catch (err) {
+      setApplyResult(null);
       setApplyError(err instanceof Error ? err.message : String(err));
     } finally {
       setValidating(false);
     }
   };
 
+  const confirmMapping = () => {
+    go("validate");
+    void previewMapping();
+  };
+
   const startImport = async () => {
     if (!file) {
-      setImportError("No file selected. Drop a file to import.");
+      setImportError("No file selected.");
+      setOutcome("error");
+      return;
+    }
+    if (!sourceId) {
+      setImportError("Select or create a destination source first.");
       setOutcome("error");
       return;
     }
@@ -314,15 +375,17 @@ export function ImportsPage() {
       const report = await api.uploadImport(
         file,
         sourceId,
-        JSON.stringify(buildMapping()),
+        JSON.stringify(engineMapping),
       );
       setImportReport(report);
-      if (report.status === "ok" && !report.is_duplicate_run) {
-        setOutcome("success");
-      } else if (report.status === "duplicate") {
+      await refetchImports();
+      if (report.is_duplicate_run || report.status === "duplicate") {
         setOutcome("duplicate");
       } else if (report.status === "rejected") {
         setOutcome("error");
+        setImportError("The file was rejected. Inspect rejections on Data quality.");
+      } else if (report.status === "ok") {
+        setOutcome("success");
       } else {
         setOutcome("warnings");
       }
@@ -334,23 +397,10 @@ export function ImportsPage() {
     }
   };
 
-  const rowsReadValue = importReport?.rows_read ?? MAPPING_PROPOSAL.rowCount;
-  const sessionsValue =
-    importReport?.sessions_imported ?? MAPPING_PROPOSAL.rowCount;
-  const duplicatesValue =
-    importReport?.duplicates ?? (outcome === "warnings" ? 3 : 0);
-  const rejectionsValue = importReport
-    ? Math.max(
-        0,
-        importReport.rows_read -
-          importReport.sessions_imported -
-          importReport.duplicates,
-      )
-    : outcome === "incomplete"
-      ? Math.round(MAPPING_PROPOSAL.rowCount * 0.4)
-      : outcome === "error"
-        ? MAPPING_PROPOSAL.rowCount
-        : 0;
+  const previewSessions = (applyResult?.preview ?? []) as PreviewSession[];
+  const profilesByName = new Map(
+    (analysis?.profiles ?? []).map((p) => [p.name, p]),
+  );
 
   const outcomeMap: Record<
     Exclude<Outcome, null>,
@@ -367,13 +417,12 @@ export function ImportsPage() {
       tone: "success",
       body: (
         <>
-          {rowsReadValue.toLocaleString()} rows imported into{" "}
+          {importReport?.rows_read.toLocaleString()} rows read into{" "}
           <span className="font-medium text-foreground">
-            {(sources ?? []).find(
-              (s) => s.id === (importReport?.source_id ?? sourceId),
-            )?.name}
+            {selectedSource?.name ?? "the selected source"}
           </span>
-          . No duplicates, no rejections.
+          . Sessions, model calls and tool calls below come from the import
+          report — missing values stay missing.
         </>
       ),
     },
@@ -383,31 +432,9 @@ export function ImportsPage() {
       tone: "warning",
       body: (
         <>
-          Imported with {MAPPING_PROPOSAL.proposal.ambiguities.length}{" "}
-          ambiguities to review. Tool comparisons will be unreliable until you
-          add a normalization rule.
-        </>
-      ),
-    },
-    incomplete: {
-      icon: AlertTriangle,
-      title: "Data incomplete",
-      tone: "warning",
-      body: (
-        <>
-          Several required fields were missing on a fraction of rows. They were
-          rejected and stored for later re-ingestion.
-        </>
-      ),
-    },
-    "non-comparable": {
-      icon: AlertTriangle,
-      title: "Source is not comparable",
-      tone: "warning",
-      body: (
-        <>
-          This source was imported but its agent & tool names are not
-          canonicalized. Cross-source comparisons will exclude it.
+          Import finished with status{" "}
+          <span className="font-mono">{importReport?.status}</span>. Review the
+          counts before comparing this source to others.
         </>
       ),
     },
@@ -426,7 +453,7 @@ export function ImportsPage() {
       icon: XCircle,
       title: "Import failed",
       tone: "error",
-      body: <>{importError ?? "A required field was missing on every row."}</>,
+      body: <>{importError ?? "The import did not complete."}</>,
     },
   };
 
@@ -434,7 +461,7 @@ export function ImportsPage() {
     <div className="animate-fade-in">
       <PageHeader
         title="Imports"
-        description="Import agent traces with the AI assistant — or browse past imports."
+        description="Import agent traces with a proposed mapping — or browse past imports."
       >
         <Button
           variant="outline"
@@ -460,33 +487,30 @@ export function ImportsPage() {
           {step === "upload" && (
             <ChartCard
               title="1 · Upload"
-              description="Choose a source type and drop a file or connect an API."
+              description="Choose a source type, create or pick a destination, then drop a file."
             >
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                {SOURCE_TYPES.map((t) => {
-                  const Icon = t.icon;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setSourceType(t.id)}
-                      className={cn(
-                        "flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors",
-                        sourceType === t.id
-                          ? "border-primary/50 bg-primary/10"
-                          : "border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40",
-                      )}
-                    >
-                      <Icon className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-xs font-medium text-foreground">
-                        {t.label}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {t.desc}
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {SOURCE_TYPES.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setSourceType(t.id)}
+                    className={cn(
+                      "flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors",
+                      sourceType === t.id
+                        ? "border-primary/50 bg-primary/10"
+                        : "border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40",
+                    )}
+                  >
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs font-medium text-foreground">
+                      {t.label}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {t.desc}
+                    </span>
+                  </button>
+                ))}
               </div>
               <Separator className="my-4" />
               <div className="grid gap-3 sm:grid-cols-2">
@@ -494,65 +518,116 @@ export function ImportsPage() {
                   <label className="text-xs font-medium text-foreground">
                     Destination source
                   </label>
-                  <Select value={sourceId} onValueChange={setSourceId}>
+                  <Select
+                    value={sourceId || undefined}
+                    onValueChange={setSourceId}
+                  >
                     <SelectTrigger className="h-9 text-xs">
                       <SelectValue placeholder="Select a source" />
                     </SelectTrigger>
                     <SelectContent>
                       {(sources ?? []).map((s) => (
                         <SelectItem key={s.id} value={s.id}>
-                          {s.name}
+                          {s.name} · {s.version}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   <p className="text-[11px] text-muted-foreground">
-                    {(sources ?? []).find((s) => s.id === sourceId)?.license ??
-                      "—"}
+                    {selectedSource
+                      ? `${selectedSource.method}${selectedSource.license ? ` · ${selectedSource.license}` : ""}`
+                      : "Create a source for a new dataset (do not reuse TraceLab for SWE-chat)."}
                   </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-[11px]"
+                    onClick={() => setShowNewSource((open) => !open)}
+                  >
+                    {showNewSource ? "Cancel" : "New source"}
+                  </Button>
                 </div>
-                {sourceType === "api" ? (
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-foreground">
-                      API endpoint
-                    </label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground">
+                    File
+                  </label>
+                  <label className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/20 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground">
+                    <UploadCloud className="h-3.5 w-3.5" />
+                    {fileName || `Drop a ${sourceType.toUpperCase()} file`}
                     <input
-                      value={apiUrl}
-                      onChange={(e) => setApiUrl(e.target.value)}
-                      placeholder="https://api.example.com/traces"
-                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      type="file"
+                      className="hidden"
+                      accept={accept}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] ?? null;
+                        setFile(f);
+                        setFileName(f?.name ?? "");
+                        setAnalyzeError(null);
+                      }}
                     />
-                    <p className="text-[11px] text-muted-foreground">
-                      The assistant will paginate and stream rows.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-foreground">
-                      File
-                    </label>
-                    <label className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/20 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground">
-                      <UploadCloud className="h-3.5 w-3.5" />
-                      {fileName || `Drop a .${sourceType} file`}
-                      <input
-                        type="file"
-                        className="hidden"
-                        accept={`.${sourceType}`}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0] ?? null;
-                          setFile(f);
-                          setFileName(f?.name ?? "");
-                        }}
-                      />
-                    </label>
-                  </div>
-                )}
+                  </label>
+                </div>
               </div>
+              {showNewSource && (
+                <div className="mt-3 grid gap-2 rounded-lg border border-border/80 bg-muted/20 p-3 sm:grid-cols-2">
+                  <input
+                    value={newSource.name}
+                    onChange={(e) =>
+                      setNewSource((s) => ({ ...s, name: e.target.value }))
+                    }
+                    placeholder="Name (e.g. swe-chat)"
+                    className="h-9 rounded-md border border-input bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <input
+                    value={newSource.version}
+                    onChange={(e) =>
+                      setNewSource((s) => ({ ...s, version: e.target.value }))
+                    }
+                    placeholder="Version (e.g. hf-2026-09-10)"
+                    className="h-9 rounded-md border border-input bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <input
+                    value={newSource.method}
+                    onChange={(e) =>
+                      setNewSource((s) => ({ ...s, method: e.target.value }))
+                    }
+                    placeholder="Retrieval method"
+                    className="h-9 rounded-md border border-input bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring sm:col-span-2"
+                  />
+                  <input
+                    value={newSource.license}
+                    onChange={(e) =>
+                      setNewSource((s) => ({ ...s, license: e.target.value }))
+                    }
+                    placeholder="License (optional)"
+                    className="h-9 rounded-md border border-input bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring sm:col-span-2"
+                  />
+                  <div className="sm:col-span-2">
+                    <Button
+                      size="sm"
+                      onClick={() => void createSource()}
+                      disabled={creatingSource}
+                    >
+                      {creatingSource ? "Creating…" : "Create source"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {sourceError && (
+                <Alert tone="error" title="Could not create source" className="mt-3">
+                  {sourceError}
+                </Alert>
+              )}
+              {analyzeError && step === "upload" && (
+                <Alert tone="error" title="Cannot analyze" className="mt-3">
+                  {analyzeError}
+                </Alert>
+              )}
               <div className="mt-4 flex justify-end">
                 <Button
                   size="sm"
-                  onClick={startAnalyze}
-                  disabled={(!fileName && sourceType !== "api") || analyzing}
+                  onClick={() => void startAnalyze()}
+                  disabled={!file || analyzing}
                 >
                   <Sparkles className="mr-1 h-3.5 w-3.5" /> Analyze
                 </Button>
@@ -563,25 +638,17 @@ export function ImportsPage() {
           {step === "analyze" && (
             <ChartCard
               title="2 · Analyze"
-              description="The AI inspects the structure and proposes a field mapping."
+              description="The assistant profiles columns and samples values. Nothing is written yet."
               action={
                 <Badge variant="info" className="text-[10px]">
-                  <Sparkles className="mr-1 h-3 w-3" /> AI
+                  <Sparkles className="mr-1 h-3 w-3" /> Proposal
                 </Badge>
               }
             >
               {analyzing ? (
                 <div className="space-y-3">
                   <Message role="agent">
-                    <p>Analyzing the file structure…</p>
-                    <p className="text-muted-foreground">
-                      Detected {displayRowCount.toLocaleString()}{" "}
-                      rows keyed by{" "}
-                      <code className="rounded bg-muted px-1 font-mono">
-                        sid
-                      </code>
-                      . Reading field types and sampling values.
-                    </p>
+                    <p>Reading the file and profiling fields…</p>
                   </Message>
                   <div className="space-y-2">
                     {[1, 2, 3].map((i) => (
@@ -592,23 +659,40 @@ export function ImportsPage() {
                     ))}
                   </div>
                 </div>
-              ) : (
+              ) : analyzeError ? (
+                <div className="space-y-3">
+                  <Alert tone="error" title="Analysis failed">
+                    {analyzeError}
+                  </Alert>
+                  <div className="flex justify-end">
+                    <Button variant="outline" size="sm" onClick={() => setStep("upload")}>
+                      Back
+                    </Button>
+                  </div>
+                </div>
+              ) : analysis ? (
                 <div className="space-y-3">
                   <Message role="agent">
                     <p>
                       Found{" "}
                       <span className="font-medium text-foreground">
-                        {displayRowCount.toLocaleString()} rows
+                        {analysis.row_count.toLocaleString()} rows
                       </span>{" "}
                       across{" "}
                       <span className="font-medium text-foreground">
-                        {displayFieldCount} fields
+                        {analysis.fields.length} fields
                       </span>
-                      . Primary key:{" "}
-                      <code className="rounded bg-muted px-1 font-mono text-foreground">
-                        sid
-                      </code>
-                      .
+                      {sessionKey ? (
+                        <>
+                          . Likely session key:{" "}
+                          <code className="rounded bg-muted px-1 font-mono text-foreground">
+                            {sessionKey}
+                          </code>
+                          .
+                        </>
+                      ) : (
+                        "."
+                      )}
                     </p>
                   </Message>
                   <div className="overflow-hidden rounded-lg border border-border/80">
@@ -622,42 +706,51 @@ export function ImportsPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {MAPPING_PROPOSAL.fields.map((f) => (
-                          <tr
-                            key={f.name}
-                            className="border-t border-border/50"
-                          >
-                            <td className="px-3 py-2 font-mono text-foreground">
-                              {f.name}
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">
-                              {f.dtype}
-                            </td>
-                            <td className="px-3 py-2 font-mono text-muted-foreground">
-                              {f.sample}
-                            </td>
-                            <td className="px-3 py-2">
-                              {f.nullable ? (
-                                <Badge variant="warning" className="text-[10px]">
-                                  yes
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline" className="text-[10px]">
-                                  no
-                                </Badge>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
+                        {analysis.fields.map((name) => {
+                          const profile = profilesByName.get(name);
+                          const nullable =
+                            profile !== undefined && profile.non_null_ratio < 1;
+                          return (
+                            <tr key={name} className="border-t border-border/50">
+                              <td className="px-3 py-2 font-mono text-foreground">
+                                {name}
+                              </td>
+                              <td className="px-3 py-2 text-muted-foreground">
+                                {profile?.inferred_type ?? "—"}
+                              </td>
+                              <td className="px-3 py-2 font-mono text-muted-foreground">
+                                {sampleText(profile?.examples[0])}
+                              </td>
+                              <td className="px-3 py-2">
+                                {nullable ? (
+                                  <Badge variant="warning" className="text-[10px]">
+                                    yes
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    no
+                                  </Badge>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
-                  <div className="flex justify-end">
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setStep("upload")}>
+                      Back
+                    </Button>
                     <Button size="sm" onClick={() => go("map")}>
                       Propose mapping <ArrowRight className="ml-1 h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>
+              ) : (
+                <Alert tone="warning" title="No analysis yet">
+                  Upload a file and run Analyze.
+                </Alert>
               )}
             </ChartCard>
           )}
@@ -665,72 +758,111 @@ export function ImportsPage() {
           {step === "map" && (
             <ChartCard
               title="3 · Map fields"
-              description="Review the AI's proposed mapping. Ambiguities are flagged."
+              description="Review the proposed mapping. Edit targets before anything is stored."
               action={
                 <Badge variant="info" className="text-[10px]">
-                  <Wand2 className="mr-1 h-3 w-3" /> AI proposal
+                  <Wand2 className="mr-1 h-3 w-3" /> Proposal
                 </Badge>
               }
             >
-              <Message role="agent">
-                <p>{MAPPING_PROPOSAL.proposal.explanation}</p>
-              </Message>
-              {MAPPING_PROPOSAL.proposal.ambiguities.length > 0 && (
-                <Alert
-                  tone="warning"
-                  title={`${MAPPING_PROPOSAL.proposal.ambiguities.length} ambiguities to review`}
-                  className="mt-3"
-                >
-                  <ul className="ml-3 list-disc space-y-0.5">
-                    {MAPPING_PROPOSAL.proposal.ambiguities.map((a, i) => (
-                      <li key={i}>{a}</li>
-                    ))}
-                  </ul>
+              {!analysis ? (
+                <Alert tone="warning" title="No analysis yet">
+                  Analyze a file before mapping fields.
                 </Alert>
+              ) : (
+                <>
+                  <Message role="agent">
+                    <p>{analysis.proposal.explanation}</p>
+                  </Message>
+                  {analysis.proposal.ambiguities.length > 0 && (
+                    <Alert
+                      tone="warning"
+                      title={`${analysis.proposal.ambiguities.length} note${analysis.proposal.ambiguities.length > 1 ? "s" : ""} to review`}
+                      className="mt-3"
+                    >
+                      <ul className="ml-3 list-disc space-y-0.5">
+                        {analysis.proposal.ambiguities.map((a, i) => (
+                          <li key={i}>{a}</li>
+                        ))}
+                      </ul>
+                    </Alert>
+                  )}
+                  <div className="mt-3 overflow-hidden rounded-lg border border-border/80">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-muted/40 text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">Source field</th>
+                          <th className="px-3 py-2 font-medium">→ Target</th>
+                          <th className="px-3 py-2 font-medium">Confidence</th>
+                          <th className="px-3 py-2 font-medium">Note</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {mappingRows.map((m) => (
+                          <tr
+                            key={m.sourceField}
+                            className="border-t border-border/50"
+                          >
+                            <td className="px-3 py-2 font-mono text-foreground">
+                              {m.sourceField}
+                            </td>
+                            <td className="px-3 py-2">
+                              <Select
+                                value={m.targetField ?? "__none__"}
+                                onValueChange={(value) =>
+                                  setMappingRows((rows) =>
+                                    rows.map((row) =>
+                                      row.sourceField === m.sourceField
+                                        ? {
+                                            ...row,
+                                            targetField:
+                                              value === "__none__" ? null : value,
+                                          }
+                                        : row,
+                                    ),
+                                  )
+                                }
+                              >
+                                <SelectTrigger className="h-8 min-w-[11rem] text-[11px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {TARGET_OPTIONS.map((opt) => (
+                                    <SelectItem key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </td>
+                            <td className="px-3 py-2">
+                              <ConfidenceBar value={m.confidence} />
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {m.note ?? ""}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <pre className="mt-3 overflow-x-auto rounded-lg border border-border/80 bg-muted/20 p-3 font-mono text-[11px] text-muted-foreground">
+                    {mappingJson}
+                  </pre>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setStep("analyze")}>
+                      Back
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={confirmMapping}
+                      disabled={!engineMapping.session.external_session_id}
+                    >
+                      Confirm mapping
+                    </Button>
+                  </div>
+                </>
               )}
-              <div className="mt-3 overflow-hidden rounded-lg border border-border/80">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-muted/40 text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">Source field</th>
-                      <th className="px-3 py-2 font-medium">→ Target</th>
-                      <th className="px-3 py-2 font-medium">Confidence</th>
-                      <th className="px-3 py-2 font-medium">Note</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {MAPPING_PROPOSAL.proposal.mappings.map((m) => (
-                      <tr
-                        key={m.sourceField}
-                        className="border-t border-border/50"
-                      >
-                        <td className="px-3 py-2 font-mono text-foreground">
-                          {m.sourceField}
-                        </td>
-                        <td className="px-3 py-2 font-mono text-muted-foreground">
-                          {m.targetField ?? (
-                            <span className="text-destructive">unmapped</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          <ConfidenceBar value={m.confidence} />
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {m.note ?? ""}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-4 flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => setStep("analyze")}>
-                  Back
-                </Button>
-                <Button size="sm" onClick={confirmMapping}>
-                  Confirm mapping
-                </Button>
-              </div>
             </ChartCard>
           )}
 
@@ -752,57 +884,90 @@ export function ImportsPage() {
                       {applyError}
                     </Alert>
                   )}
-                  <Alert tone="success" title="Mapping is valid">
-                    All required fields are present.{" "}
-                    {applyResult?.preview?.length ?? 5} preview rows ready.
-                  </Alert>
+                  {saveWarning && (
+                    <Alert tone="warning" title="Mapping not saved" className="mb-3">
+                      {saveWarning}
+                    </Alert>
+                  )}
+                  {applyResult?.is_valid ? (
+                    <Alert tone="success" title="Mapping is valid">
+                      Required session id is present.{" "}
+                      {previewSessions.length} preview session
+                      {previewSessions.length === 1 ? "" : "s"} from the file.
+                    </Alert>
+                  ) : !applyError ? (
+                    <Alert tone="info" title="Preview not run">
+                      Confirm the mapping to preview normalized rows.
+                    </Alert>
+                  ) : null}
+                  {applyResult?.warnings && applyResult.warnings.length > 0 && (
+                    <Alert tone="warning" title="Warnings" className="mt-3">
+                      <ul className="ml-3 list-disc space-y-0.5">
+                        {applyResult.warnings.map((w, i) => (
+                          <li key={i}>{w}</li>
+                        ))}
+                      </ul>
+                    </Alert>
+                  )}
                   <Tabs defaultValue="preview" className="mt-3">
                     <TabsList className="h-8">
                       <TabsTrigger value="preview" className="text-[11px]">
-                        Preview ({applyResult?.preview?.length ?? 5})
+                        Preview ({previewSessions.length})
                       </TabsTrigger>
                       <TabsTrigger value="mapping" className="text-[11px]">
                         Applied mapping
                       </TabsTrigger>
                     </TabsList>
                     <TabsContent value="preview">
-                      <div className="overflow-x-auto rounded-lg border border-border/80">
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-muted/40 text-muted-foreground">
-                            <tr>
-                              <th className="px-2 py-2">session.id</th>
-                              <th className="px-2 py-2">agent</th>
-                              <th className="px-2 py-2">model</th>
-                              <th className="px-2 py-2">tokens</th>
-                              <th className="px-2 py-2">tool</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {[1, 2, 3, 4, 5].map((i) => (
-                              <tr
-                                key={i}
-                                className="border-t border-border/50"
-                              >
-                                <td className="px-2 py-2 font-mono text-foreground">
-                                  tc-{1000 + i}
-                                </td>
-                                <td className="px-2 py-2">devin</td>
-                                <td className="px-2 py-2 font-mono text-muted-foreground">
-                                  gpt-5
-                                </td>
-                                <td className="px-2 py-2 font-mono tabular-nums">
-                                  {(1200 + i * 240).toLocaleString()}
-                                </td>
-                                <td className="px-2 py-2">shell</td>
+                      {previewSessions.length === 0 ? (
+                        <p className="px-1 py-6 text-center text-xs text-muted-foreground">
+                          No preview rows yet.
+                        </p>
+                      ) : (
+                        <div className="overflow-x-auto rounded-lg border border-border/80">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-muted/40 text-muted-foreground">
+                              <tr>
+                                <th className="px-2 py-2">session.id</th>
+                                <th className="px-2 py-2">agent</th>
+                                <th className="px-2 py-2">model</th>
+                                <th className="px-2 py-2">tokens</th>
+                                <th className="px-2 py-2">tool</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                            </thead>
+                            <tbody>
+                              {previewSessions.map((row, i) => (
+                                <tr
+                                  key={row.session?.external_session_id ?? i}
+                                  className="border-t border-border/50"
+                                >
+                                  <td className="px-2 py-2 font-mono text-foreground">
+                                    {row.session?.external_session_id ?? "—"}
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    {row.session?.agent ?? "—"}
+                                  </td>
+                                  <td className="px-2 py-2 font-mono text-muted-foreground">
+                                    {row.session?.model ??
+                                      row.model_calls?.[0]?.model ??
+                                      "—"}
+                                  </td>
+                                  <td className="px-2 py-2 font-mono tabular-nums">
+                                    {tokenLabel(row.model_calls)}
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    {row.tool_calls?.[0]?.tool_name ?? "—"}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </TabsContent>
                     <TabsContent value="mapping">
                       <pre className="overflow-x-auto rounded-lg border border-border/80 bg-muted/20 p-3 font-mono text-[11px] text-muted-foreground">
-                        {JSON.stringify(buildMapping(), null, 2)}
+                        {mappingJson}
                       </pre>
                     </TabsContent>
                   </Tabs>
@@ -810,7 +975,18 @@ export function ImportsPage() {
                     <Button variant="outline" size="sm" onClick={() => setStep("map")}>
                       Back
                     </Button>
-                    <Button size="sm" onClick={startValidate}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void previewMapping()}
+                    >
+                      Re-run preview
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => go("import")}
+                      disabled={!applyResult?.is_valid}
+                    >
                       <ShieldCheck className="mr-1 h-3.5 w-3.5" /> Proceed to
                       import
                     </Button>
@@ -857,10 +1033,22 @@ export function ImportsPage() {
                     </div>
                   </Alert>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <Stat label="Rows read" value={rowsReadValue} />
-                    <Stat label="Sessions" value={sessionsValue} />
-                    <Stat label="Duplicates" value={duplicatesValue} />
-                    <Stat label="Rejections" value={rejectionsValue} />
+                    <Stat label="Rows read" value={importReport?.rows_read} />
+                    <Stat
+                      label="Sessions"
+                      value={importReport?.sessions_imported}
+                    />
+                    <Stat
+                      label="Model calls"
+                      value={importReport?.model_calls_imported}
+                    />
+                    <Stat
+                      label="Tool calls"
+                      value={importReport?.tool_calls_imported}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <Stat label="Duplicates" value={importReport?.duplicates} />
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button variant="outline" size="sm" onClick={reset}>
@@ -878,13 +1066,17 @@ export function ImportsPage() {
                 <div className="flex flex-col items-center gap-3 py-8 text-center">
                   <ShieldCheck className="h-8 w-8 text-muted-foreground" />
                   <p className="text-xs text-muted-foreground">
-                    Ready to import {MAPPING_PROPOSAL.rowCount.toLocaleString()}{" "}
-                    rows into{" "}
-                    {(sources ?? []).find((s) => s.id === sourceId)?.name ??
-                      "the source"}
-                    .
+                    Ready to import{" "}
+                    {analysis
+                      ? `${analysis.row_count.toLocaleString()} rows from ${fileName}`
+                      : fileName || "the selected file"}{" "}
+                    into {selectedSource?.name ?? "the selected source"}.
                   </p>
-                  <Button size="sm" onClick={startImport}>
+                  <Button
+                    size="sm"
+                    onClick={() => void startImport()}
+                    disabled={!file || !sourceId || !applyResult?.is_valid}
+                  >
                     <Database className="mr-1 h-3.5 w-3.5" /> Run import
                   </Button>
                 </div>
@@ -896,15 +1088,14 @@ export function ImportsPage() {
         <aside className="flex flex-col gap-4">
           <ChartCard
             title="Assistant"
-            description="Conversational guidance through the import"
+            description="Guidance through the import"
             badge="AI"
           >
             <div className="space-y-3">
               <Message role="agent">
                 <p>
-                  Hi — I'll help you import a new source. Drop a file and I'll
-                  inspect its structure, propose a mapping, flag ambiguities,
-                  and preview before anything is written.
+                  Drop a file. I propose a mapping, you edit it, then the
+                  engine validates and imports. I do not write to the database.
                 </p>
               </Message>
               <Message role="user">
@@ -912,10 +1103,16 @@ export function ImportsPage() {
                   Importing{" "}
                   <span className="font-medium text-foreground">
                     {sourceType.toUpperCase()}
-                  </span>{" "}
+                  </span>
+                  {fileName ? (
+                    <>
+                      {" "}
+                      (<span className="font-mono">{fileName}</span>)
+                    </>
+                  ) : null}{" "}
                   into{" "}
                   <span className="font-medium text-foreground">
-                    {(sources ?? []).find((s) => s.id === sourceId)?.name}
+                    {selectedSource?.name ?? "a new source"}
                   </span>
                   .
                 </p>
@@ -990,7 +1187,7 @@ function Stat({
   value,
 }: {
   label: string;
-  value: number;
+  value: number | null | undefined;
 }) {
   return (
     <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
@@ -998,7 +1195,7 @@ function Stat({
         {label}
       </div>
       <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-foreground">
-        {formatNumber(value)}
+        {value === null || value === undefined ? "—" : formatNumber(value)}
       </div>
     </div>
   );

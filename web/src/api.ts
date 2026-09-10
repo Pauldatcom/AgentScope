@@ -246,17 +246,59 @@ export interface ImportReportOut {
   is_duplicate_run: boolean;
 }
 
+export interface FieldProfileOut {
+  name: string;
+  inferred_type: string;
+  non_null_ratio: number;
+  distinct_values: number;
+  examples: unknown[];
+}
+
+export interface ProposalFieldOut {
+  source_field: string;
+  target_field: string;
+  confidence: number;
+  explanation?: string;
+  ambiguity?: string | null;
+}
+
 export interface AnalysisOut {
   sample_rows: Record<string, unknown>[];
   fields: string[];
   row_count: number;
-  profiles: Record<string, unknown>[];
+  profiles: FieldProfileOut[];
   proposal: {
-    fields: Record<string, unknown>[];
+    fields: ProposalFieldOut[];
     source_name: string;
     explanation: string;
     ambiguities: string[];
   };
+}
+
+export interface SourceIn {
+  name: string;
+  version: string;
+  method: string;
+  license?: string | null;
+}
+
+export interface MappingOut {
+  id: string;
+  source_id: string;
+  version: number;
+  mapping: Record<string, unknown>;
+  created_by: string;
+  is_active: boolean;
+}
+
+export interface MappingIn {
+  source_id: string;
+  mapping: {
+    session?: Record<string, string>;
+    model_call?: Record<string, string>;
+    tool_call?: Record<string, string>;
+  };
+  created_by?: string;
 }
 
 export interface ApplyMappingOut {
@@ -286,6 +328,23 @@ function filtersToQuery(f: ApiFilters): string {
 export const api = {
   // Sources
   fetchSources: () => apiJson<SourceOut[]>("/sources"),
+
+  createSource: (payload: SourceIn) =>
+    apiJson<SourceOut>("/sources", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+
+  saveMapping: (payload: MappingIn) =>
+    apiJson<MappingOut>("/mappings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        created_by: "ui",
+        ...payload,
+      }),
+    }),
 
   // Sessions
   fetchSessions: (filters: ApiFilters & { limit?: number; offset?: number }) => {

@@ -19,7 +19,24 @@ no data file is committed unless its license explicitly permits redistribution.
 
 ## SWE-chat — second source
 - Hugging Face: <https://huggingface.co/datasets/SALT-NLP/SWE-chat>
-- Used in issue #18 to exercise the AI import assistant on an unknown shape.
+- Retrieved: 2026-09-10 (schema from the dataset card; the Hub copy is gated)
+- Assets: `conversations.parquet` (turns) and `sessions.parquet` (session rollup)
+- License: dataset terms on the Hub — accept them before download; we do not
+  commit Hub rows
+- Retrieval (after `huggingface-cli login` and accepting the terms):
+  ```bash
+  huggingface-cli download SALT-NLP/SWE-chat conversations.parquet \
+    --local-dir trace/swe-chat
+  ```
+  Export a JSONL slice for the Imports page (the engine reads JSONL/CSV/Parquet;
+  a small head is enough to validate the mapping):
+  ```bash
+  python -c "import pandas as pd; df=pd.read_parquet('trace/swe-chat/conversations.parquet'); df.head(200).to_json('trace/swe-chat/conversations.head.jsonl', orient='records', lines=True)"
+  ```
+- Import path: UI → New source (`swe-chat`) → upload JSONL → edit mapping →
+  validate → import. No SWE-chat connector is checked in.
+- Mapping: see `docs/mappings.md`. Tests use synthetic rows with the real
+  column names (`tests/e2e/test_swechat_import.py`).
 
 ## Trace Commons — stress test
 - Hugging Face: <https://huggingface.co/datasets/trace-commons/agent-traces>
