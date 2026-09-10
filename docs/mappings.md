@@ -46,33 +46,49 @@ for the source is loaded automatically.
 
 ## SWE-chat
 
-Source: <https://huggingface.co/datasets/SALT-NLP/SWE-chat>.
+Source: <https://huggingface.co/datasets/SALT-NLP/SWE-chat> (gated; accept
+the dataset terms, then `huggingface-cli download`).
 
-SWE-chat collects development conversations with tool calls. The structure
-differs from TraceLab (no `session_id` in the TraceLab sense; conversations
-are organized by `repo` + `instance_id`). The following mapping is proposed
-by the AI assistant and validated from the UI:
+The extract used here is **conversations** (one row per transcript turn),
+not a nested TraceLab-style tools array. Columns observed on 2026-09-10:
+
+- `session_id`, `turn_id`, `turn_number`, `role`, `turn_type`, `model`
+- `input_tokens`, `output_tokens`, `cache_creation_input_tokens`
+- `tool_name` (set on `tool_use` / `tool_result` rows; null otherwise)
+- `agent` (denormalized from the sessions table)
+- `timestamp`
+
+There is no SWE-chat connector in the Python code. Create a source from the
+Imports page, upload a JSONL extract, edit the proposed mapping, validate,
+then import. `tool_name` on the same row is enough: omit `tools_path`.
 
 ```json
 {
   "session": {
-    "external_session_id": "instance_id",
+    "external_session_id": "session_id",
     "agent": "agent",
     "model": "model"
   },
   "model_call": {
-    "round_index": "turn_id",
+    "round_index": "turn_number",
+    "model": "model",
     "prompt_tokens": "input_tokens",
-    "completion_tokens": "output_tokens"
+    "completion_tokens": "output_tokens",
+    "cache_creation_tokens": "cache_creation_input_tokens",
+    "occurred_at": "timestamp"
   },
   "tool_call": {
-    "tools_path": "tool_calls",
-    "tool_name": "tool_name",
-    "wall_latency_ms": "latency_ms",
-    "is_error": "error"
+    "tool_name": "tool_name"
   }
 }
 ```
+
+Grain: every conversation row becomes a `model_call`. Token fields are
+null on user and tool rows — they stay null, they are not stored as 0.
+A `tool_call` is created only when `tool_name` is present.
+
+Covered by `tests/e2e/test_swechat_import.py` (synthetic rows, real column
+names; Hugging Face records are not redistributed).
 
 ## Trace Commons (unknown structure)
 

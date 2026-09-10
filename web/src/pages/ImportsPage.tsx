@@ -5,15 +5,10 @@ import {
   Sparkles,
   Wand2,
   ShieldCheck,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
   FileText,
-  Bot,
   RefreshCw,
   ArrowRight,
   Database,
-  MessageSquare,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell";
@@ -46,242 +41,85 @@ import {
 } from "@/api";
 import { useApi } from "@/hooks/useApi";
 import {
-  cn,
-  formatNumber,
-  relativeTime,
-} from "@/lib/utils";
-
-type Step = "upload" | "analyze" | "map" | "validate" | "import";
-type SourceType = "jsonl" | "csv" | "parquet";
-type Outcome =
-  | null
-  | "success"
-  | "warnings"
-  | "incomplete"
-  | "non-comparable"
-  | "duplicate"
-  | "error";
-
-interface MappingEntry {
-  sourceField: string;
-  targetField: string | null;
-  confidence: number;
-  note?: string;
-}
-
-const TARGET_FIELDS = [
-  "session.external_session_id",
-  "session.agent",
-  "session.model",
-  "session.started_at",
-  "session.ended_at",
-  "model_call.round_index",
-  "model_call.model",
-  "model_call.prompt_tokens",
-  "model_call.completion_tokens",
-  "model_call.cache_creation_tokens",
-  "model_call.latency_ms",
-  "model_call.is_error",
-  "model_call.occurred_at",
-  "tool_call.tools_path",
-  "tool_call.tool_name",
-  "tool_call.input_chars",
-  "tool_call.result_chars",
-  "tool_call.wall_latency_ms",
-  "tool_call.internal_latency_ms",
-  "tool_call.is_error",
-  "tool_call.occurred_at",
-];
-
-const TARGET_SECTIONS: Record<string, string> = {
-  external_session_id: "session",
-  agent: "session",
-  model: "session",
-  started_at: "session",
-  ended_at: "session",
-  round_index: "model_call",
-  prompt_tokens: "model_call",
-  completion_tokens: "model_call",
-  cache_creation_tokens: "model_call",
-  latency_ms: "model_call",
-  is_error: "model_call",
-  occurred_at: "model_call",
-  tools_path: "tool_call",
-  tool_name: "tool_call",
-  input_chars: "tool_call",
-  result_chars: "tool_call",
-  wall_latency_ms: "tool_call",
-  internal_latency_ms: "tool_call",
-};
-
-function qualifyTarget(target: string): string {
-  if (target.includes(".")) return target;
-  const section = TARGET_SECTIONS[target];
-  return section ? `${section}.${target}` : "";
-}
-
-function sampleValue(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "string") return value;
-  const serialized = JSON.stringify(value);
-  return serialized.length > 80 ? `${serialized.slice(0, 77)}...` : serialized;
-}
-
-function previewField(
-  row: Record<string, unknown>,
-  section: string,
-  field: string,
-): string {
-  const value = row[section];
-  if (!value || typeof value !== "object" || Array.isArray(value)) return "—";
-  return sampleValue((value as Record<string, unknown>)[field]);
-}
-
-function previewTool(row: Record<string, unknown>): string {
-  const tools = row.tool_calls;
-  if (!Array.isArray(tools) || tools.length === 0) return "—";
-  const firstTool = tools[0];
-  if (!firstTool || typeof firstTool !== "object") return "—";
-  return sampleValue((firstTool as Record<string, unknown>).tool_name);
-}
-
-const STEPS: { id: Step; label: string; description: string }[] = [
-  { id: "upload", label: "Upload", description: "Drop a file or connect an API" },
-  { id: "analyze", label: "Analyze", description: "The AI inspects structure" },
-  { id: "map", label: "Map fields", description: "Confirm field mapping" },
-  { id: "validate", label: "Validate", description: "Preview normalized rows" },
-  { id: "import", label: "Import", description: "Persist & deduplicate" },
-];
-
-const SOURCE_TYPES: {
-  id: SourceType;
-  label: string;
-  desc: string;
-  icon: typeof FileText;
-}[] = [
-  { id: "jsonl", label: "JSONL", desc: "One session per line", icon: FileText },
-  { id: "csv", label: "CSV", desc: "Header + rows", icon: FileText },
-  { id: "parquet", label: "Parquet", desc: "Columnar trace export", icon: FileText },
-];
-
-function Message({
-  role,
-  children,
-}: {
-  role: "agent" | "user";
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex gap-3 rounded-lg p-3 text-xs",
-        role === "agent" ? "bg-muted/30" : "bg-transparent",
-      )}
-    >
-      <div
-        className={cn(
-          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
-          role === "agent"
-            ? "bg-primary/15 text-primary"
-            : "bg-secondary text-secondary-foreground",
-        )}
-      >
-        {role === "agent" ? (
-          <Bot className="h-3.5 w-3.5" />
-        ) : (
-          <MessageSquare className="h-3.5 w-3.5" />
-        )}
-      </div>
-      <div className="flex-1 space-y-1.5 text-foreground/90">{children}</div>
-    </div>
-  );
-}
-
-function ConfidenceBar({ value }: { value: number }) {
-  const tone =
-    value >= 0.8
-      ? "bg-success"
-      : value >= 0.5
-        ? "bg-warning"
-        : "bg-destructive";
-  return (
-    <div className="flex items-center gap-2">
-      <div className="relative h-1.5 w-16 overflow-hidden rounded-full bg-muted">
-        <div
-          className={cn("absolute inset-y-0 left-0 rounded-full", tone)}
-          style={{ width: `${value * 100}%` }}
-        />
-      </div>
-      <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-        {Math.round(value * 100)}%
-      </span>
-    </div>
-  );
-}
+  engineMappingFromRows,
+  rowsFromProposal,
+  TARGET_OPTIONS,
+  type MappingRow,
+} from "@/mapping";
+import { cn, relativeTime } from "@/lib/utils";
+import {
+  IMPORT_STEPS,
+  SOURCE_TYPES,
+  sampleText,
+  tokenLabel,
+  type ImportOutcome,
+  type ImportStep,
+  type PreviewSession,
+  type SourceType,
+} from "./imports";
+import { ConfidenceBar, Message, Stat } from "./imports-ui";
 
 export function ImportsPage() {
   const navigate = useNavigate();
-  const [step, setStep] = React.useState<Step>("upload");
-  const [completed, setCompleted] = React.useState<Step[]>([]);
+  const [step, setStep] = React.useState<ImportStep>("upload");
+  const [completed, setCompleted] = React.useState<ImportStep[]>([]);
   const [sourceType, setSourceType] = React.useState<SourceType>("jsonl");
   const [sourceId, setSourceId] = React.useState<string>("");
-  const [sourceOptions, setSourceOptions] = React.useState<SourceOut[]>([]);
-  const [newSourceName, setNewSourceName] = React.useState("");
-  const [creatingSource, setCreatingSource] = React.useState(false);
-  const [sourceError, setSourceError] = React.useState<string | null>(null);
   const [fileName, setFileName] = React.useState<string>("");
   const [file, setFile] = React.useState<File | null>(null);
   const [analyzing, setAnalyzing] = React.useState(false);
   const [validating, setValidating] = React.useState(false);
   const [importing, setImporting] = React.useState(false);
-  const [outcome, setOutcome] = React.useState<Outcome>(null);
+  const [creatingSource, setCreatingSource] = React.useState(false);
+  const [showNewSource, setShowNewSource] = React.useState(false);
+  const [newSource, setNewSource] = React.useState({
+    name: "",
+    version: "",
+    method: "",
+    license: "",
+  });
+  const [outcome, setOutcome] = React.useState<ImportOutcome>(null);
   const [analysis, setAnalysis] = React.useState<AnalysisOut | null>(null);
-  const [mappingEntries, setMappingEntries] = React.useState<MappingEntry[]>([]);
+  const [mappingRows, setMappingRows] = React.useState<MappingRow[]>([]);
   const [applyResult, setApplyResult] = React.useState<ApplyMappingOut | null>(
     null,
   );
+  const [analyzeError, setAnalyzeError] = React.useState<string | null>(null);
   const [applyError, setApplyError] = React.useState<string | null>(null);
-  const [analysisError, setAnalysisError] = React.useState<string | null>(null);
+  const [sourceError, setSourceError] = React.useState<string | null>(null);
   const [importReport, setImportReport] =
     React.useState<ImportReportOut | null>(null);
   const [importError, setImportError] = React.useState<string | null>(null);
+  const [saveWarning, setSaveWarning] = React.useState<string | null>(null);
 
-  const { data: sources } = useApi<SourceOut[]>(() => api.fetchSources(), []);
-  const { data: imports } = useApi<ImportRunOut[]>(() => api.fetchImports(20), []);
+  const { data: sources, refetch: refetchSources } = useApi<SourceOut[]>(
+    () => api.fetchSources(),
+    [],
+  );
+  const { data: imports, refetch: refetchImports } = useApi<ImportRunOut[]>(
+    () => api.fetchImports(20),
+    [],
+  );
 
   React.useEffect(() => {
-    if (sources) setSourceOptions(sources);
-  }, [sources]);
-
-  React.useEffect(() => {
-    if (!sourceId && sourceOptions.length > 0) setSourceId(sourceOptions[0].id);
-  }, [sourceId, sourceOptions]);
-
-  const createSource = async () => {
-    const name = newSourceName.trim();
-    if (!name) return;
-    setCreatingSource(true);
-    setSourceError(null);
-    try {
-      const source = await api.createSource({
-        name,
-        version: "v0.1",
-        method: "uploaded file",
-      });
-      setSourceOptions((current) => [...current, source]);
-      setSourceId(source.id);
-      setNewSourceName("");
-    } catch (err) {
-      setSourceError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setCreatingSource(false);
+    if (!sourceId && sources && sources.length > 0) {
+      setSourceId(sources[0].id);
     }
-  };
+  }, [sources, sourceId]);
 
-  const displayRowCount = analysis?.row_count ?? 0;
-  const displayFieldCount = analysis?.fields.length ?? 0;
+  const engineMapping = React.useMemo(
+    () => engineMappingFromRows(mappingRows),
+    [mappingRows],
+  );
+  const mappingJson = JSON.stringify(engineMapping, null, 2);
+  const selectedSource = (sources ?? []).find((s) => s.id === sourceId);
+  const accept =
+    SOURCE_TYPES.find((t) => t.id === sourceType)?.accept ?? ".jsonl,.json,.csv";
+  const sessionKey =
+    mappingRows.find((r) => r.targetField === "session.external_session_id")
+      ?.sourceField ?? analysis?.fields[0];
 
-  const go = (next: Step) => {
+  const go = (next: ImportStep) => {
     if (!completed.includes(step)) setCompleted((c) => [...c, step]);
     setStep(next);
   };
@@ -293,101 +131,124 @@ export function ImportsPage() {
     setFile(null);
     setOutcome(null);
     setAnalysis(null);
-    setMappingEntries([]);
+    setMappingRows([]);
     setApplyResult(null);
+    setAnalyzeError(null);
     setApplyError(null);
-    setAnalysisError(null);
+    setSourceError(null);
     setImportReport(null);
     setImportError(null);
+    setSaveWarning(null);
   };
 
-  const buildMapping = (): Record<string, Record<string, string>> => {
-    const mapping: Record<string, Record<string, string>> = {
-      session: {},
-      model_call: {},
-      tool_call: {},
-    };
-    for (const entry of mappingEntries) {
-      if (!entry.targetField) continue;
-      const [section, target] = entry.targetField.split(".");
-      if (section in mapping && target) mapping[section][target] = entry.sourceField;
+  const createSource = async () => {
+    if (!newSource.name.trim() || !newSource.version.trim() || !newSource.method.trim()) {
+      setSourceError("Name, version and retrieval method are required.");
+      return;
     }
-    return mapping;
+    setCreatingSource(true);
+    setSourceError(null);
+    try {
+      const created = await api.createSource({
+        name: newSource.name.trim(),
+        version: newSource.version.trim(),
+        method: newSource.method.trim(),
+        license: newSource.license.trim() || null,
+      });
+      setSourceId(created.id);
+      setShowNewSource(false);
+      setNewSource({ name: "", version: "", method: "", license: "" });
+      await refetchSources();
+    } catch (err) {
+      setSourceError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreatingSource(false);
+    }
   };
 
   const startAnalyze = async () => {
-    if (!file) return;
+    if (!file) {
+      setAnalyzeError("Choose a file first.");
+      return;
+    }
     setAnalyzing(true);
-    setAnalysisError(null);
+    setAnalyzeError(null);
     setAnalysis(null);
-    setMappingEntries([]);
+    setMappingRows([]);
+    setApplyResult(null);
     go("analyze");
     try {
       const result = await api.analyzeMapping(file);
       setAnalysis(result);
-      const proposals = new Map(
-        result.proposal.fields.map((field) => [
-          String(field.source_field),
-          field,
-        ]),
-      );
-      setMappingEntries(
-        result.fields.map((sourceField) => {
-          const proposal = proposals.get(sourceField) as
-            | Record<string, unknown>
-            | undefined;
-          const rawTarget = String(proposal?.target_field ?? "");
-          return {
-            sourceField,
-            targetField: rawTarget ? qualifyTarget(rawTarget) : null,
-            confidence: Number(proposal?.confidence ?? 0),
-            note: String(proposal?.explanation ?? "") || undefined,
-          };
-        }),
-      );
+      setMappingRows(rowsFromProposal(result.fields, result.proposal.fields));
     } catch (err) {
-      setAnalysisError(err instanceof Error ? err.message : String(err));
+      setAnalyzeError(err instanceof Error ? err.message : String(err));
     } finally {
       setAnalyzing(false);
     }
   };
 
-  const confirmMapping = () => {
-    setApplyResult(null);
-    setApplyError(null);
-    go("validate");
-    void startValidate();
-  };
-
-  const startValidate = async () => {
+  const previewMapping = async () => {
     if (!file) {
-      setApplyError("No file selected. Drop a file to validate.");
+      setApplyError("No file selected.");
       return;
     }
     if (!sourceId) {
-      setApplyError("Select a destination source before validating.");
+      setApplyError("Select or create a destination source first.");
+      return;
+    }
+    if (!engineMapping.session.external_session_id) {
+      setApplyError("Map a source field to session.external_session_id.");
       return;
     }
     setValidating(true);
     setApplyError(null);
+    setSaveWarning(null);
     try {
       const result = await api.applyMapping(
         file,
-        JSON.stringify(buildMapping()),
+        JSON.stringify(engineMapping),
         sourceId,
       );
       setApplyResult(result);
-      if (!result.is_valid) setApplyError(result.errors.join(" "));
+      if (!result.is_valid) {
+        setApplyError(result.errors.join(" ") || "Mapping is invalid.");
+        return;
+      }
+      try {
+        await api.saveMapping({
+          source_id: sourceId,
+          mapping: engineMapping,
+          created_by: "ui",
+        });
+      } catch (err) {
+        setSaveWarning(
+          err instanceof Error
+            ? `Mapping preview is valid, but saving it failed: ${err.message}`
+            : "Mapping preview is valid, but saving it failed.",
+        );
+      }
     } catch (err) {
+      setApplyResult(null);
       setApplyError(err instanceof Error ? err.message : String(err));
     } finally {
       setValidating(false);
     }
   };
 
+  const confirmMapping = () => {
+    go("validate");
+    void previewMapping();
+  };
+
   const startImport = async () => {
     if (!file) {
-      setImportError("No file selected. Drop a file to import.");
+      setImportError("No file selected.");
+      setOutcome("error");
+      return;
+    }
+    if (!sourceId) {
+      setImportError("Select or create a destination source first.");
       setOutcome("error");
       return;
     }
@@ -397,15 +258,17 @@ export function ImportsPage() {
       const report = await api.uploadImport(
         file,
         sourceId,
-        JSON.stringify(buildMapping()),
+        JSON.stringify(engineMapping),
       );
       setImportReport(report);
-      if (report.status === "ok" && !report.is_duplicate_run) {
-        setOutcome("success");
-      } else if (report.status === "duplicate") {
+      await refetchImports();
+      if (report.is_duplicate_run || report.status === "duplicate") {
         setOutcome("duplicate");
       } else if (report.status === "rejected") {
         setOutcome("error");
+        setImportError("The file was rejected. Inspect rejections on Data quality.");
+      } else if (report.status === "ok") {
+        setOutcome("success");
       } else {
         setOutcome("warnings");
       }
@@ -417,79 +280,45 @@ export function ImportsPage() {
     }
   };
 
-  const rowsReadValue = importReport?.rows_read ?? 0;
-  const sessionsValue =
-    importReport?.sessions_imported ?? 0;
-  const duplicatesValue = importReport?.duplicates ?? 0;
-  const rejectionsValue = importReport
-    ? Math.max(
-        0,
-        importReport.rows_read -
-          importReport.sessions_imported -
-          importReport.duplicates,
-      )
-    : 0;
+  const previewSessions = (applyResult?.preview ?? []) as PreviewSession[];
+  const profilesByName = new Map(
+    (analysis?.profiles ?? []).map((p) => [p.name, p]),
+  );
 
   const outcomeMap: Record<
-    Exclude<Outcome, null>,
+    Exclude<ImportOutcome, null>,
     {
-      icon: typeof CheckCircle2;
       title: string;
       tone: "success" | "warning" | "error" | "info";
       body: React.ReactNode;
     }
   > = {
     success: {
-      icon: CheckCircle2,
       title: "Import successful",
       tone: "success",
       body: (
         <>
-          {rowsReadValue.toLocaleString()} rows imported into{" "}
+          {importReport?.rows_read.toLocaleString()} rows read into{" "}
           <span className="font-medium text-foreground">
-            {sourceOptions.find(
-              (s) => s.id === (importReport?.source_id ?? sourceId),
-            )?.name}
+            {selectedSource?.name ?? "the selected source"}
           </span>
-          . No duplicates, no rejections.
+          . Sessions, model calls and tool calls below come from the import
+          report — missing values stay missing.
         </>
       ),
     },
     warnings: {
-      icon: AlertTriangle,
       title: "Imported with warnings",
       tone: "warning",
       body: (
         <>
-          The import completed with warnings. Review the mapping and the
-          rejected rows before comparing this source with others.
-        </>
-      ),
-    },
-    incomplete: {
-      icon: AlertTriangle,
-      title: "Data incomplete",
-      tone: "warning",
-      body: (
-        <>
-          Several required fields were missing on a fraction of rows. They were
-          rejected and stored for later re-ingestion.
-        </>
-      ),
-    },
-    "non-comparable": {
-      icon: AlertTriangle,
-      title: "Source is not comparable",
-      tone: "warning",
-      body: (
-        <>
-          This source was imported but its agent & tool names are not
-          canonicalized. Cross-source comparisons will exclude it.
+          Import finished with status{" "}
+          <span className="font-mono">{importReport?.status}</span>. Review the
+          counts before comparing this source to others.
         </>
       ),
     },
     duplicate: {
-      icon: AlertTriangle,
       title: "Duplicate run",
       tone: "warning",
       body: (
@@ -500,10 +329,9 @@ export function ImportsPage() {
       ),
     },
     error: {
-      icon: XCircle,
       title: "Import failed",
       tone: "error",
-      body: <>{importError ?? "A required field was missing on every row."}</>,
+      body: <>{importError ?? "The import did not complete."}</>,
     },
   };
 
@@ -511,7 +339,7 @@ export function ImportsPage() {
     <div className="animate-fade-in">
       <PageHeader
         title="Imports"
-        description="Import agent traces with the AI assistant — or browse past imports."
+        description="Import agent traces with a proposed mapping — or browse past imports."
       >
         <Button
           variant="outline"
@@ -525,10 +353,10 @@ export function ImportsPage() {
 
       <div className="mb-5 rounded-xl border border-border/80 bg-card/40 p-4">
         <Stepper
-          steps={STEPS}
+          steps={IMPORT_STEPS}
           current={step}
           completed={completed}
-          onStepClick={(id) => setStep(id as Step)}
+          onStepClick={(id) => setStep(id as ImportStep)}
         />
       </div>
 
@@ -537,33 +365,30 @@ export function ImportsPage() {
           {step === "upload" && (
             <ChartCard
               title="1 · Upload"
-              description="Choose a source type and drop a file or connect an API."
+              description="Choose a source type, create or pick a destination, then drop a file."
             >
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                {SOURCE_TYPES.map((t) => {
-                  const Icon = t.icon;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setSourceType(t.id)}
-                      className={cn(
-                        "flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors",
-                        sourceType === t.id
-                          ? "border-primary/50 bg-primary/10"
-                          : "border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40",
-                      )}
-                    >
-                      <Icon className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-xs font-medium text-foreground">
-                        {t.label}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {t.desc}
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {SOURCE_TYPES.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setSourceType(t.id)}
+                    className={cn(
+                      "flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors",
+                      sourceType === t.id
+                        ? "border-primary/50 bg-primary/10"
+                        : "border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40",
+                    )}
+                  >
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs font-medium text-foreground">
+                      {t.label}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {t.desc}
+                    </span>
+                  </button>
+                ))}
               </div>
               <Separator className="my-4" />
               <div className="grid gap-3 sm:grid-cols-2">
@@ -571,42 +396,34 @@ export function ImportsPage() {
                   <label className="text-xs font-medium text-foreground">
                     Destination source
                   </label>
-                  <Select value={sourceId} onValueChange={setSourceId}>
+                  <Select
+                    value={sourceId || undefined}
+                    onValueChange={setSourceId}
+                  >
                     <SelectTrigger className="h-9 text-xs">
                       <SelectValue placeholder="Select a source" />
                     </SelectTrigger>
                     <SelectContent>
-                      {sourceOptions.map((s) => (
+                      {(sources ?? []).map((s) => (
                         <SelectItem key={s.id} value={s.id}>
-                          {s.name}
+                          {s.name} · {s.version}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   <p className="text-[11px] text-muted-foreground">
-                    {sourceOptions.find((s) => s.id === sourceId)?.license ??
-                      "—"}
+                    {selectedSource
+                      ? `${selectedSource.method}${selectedSource.license ? ` · ${selectedSource.license}` : ""}`
+                      : "Create a source for a new dataset (do not reuse TraceLab for SWE-chat)."}
                   </p>
-                  <div className="flex gap-2">
-                    <input
-                      value={newSourceName}
-                      onChange={(event) => setNewSourceName(event.target.value)}
-                      placeholder="New source name"
-                      className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void createSource()}
-                      disabled={!newSourceName.trim() || creatingSource}
-                    >
-                      {creatingSource ? "Creating..." : "Create source"}
-                    </Button>
-                  </div>
-                  {sourceError && (
-                    <p className="text-[11px] text-destructive">{sourceError}</p>
-                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-[11px]"
+                    onClick={() => setShowNewSource((open) => !open)}
+                  >
+                    {showNewSource ? "Cancel" : "New source"}
+                  </Button>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-foreground">
@@ -614,25 +431,81 @@ export function ImportsPage() {
                   </label>
                   <label className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/20 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground">
                     <UploadCloud className="h-3.5 w-3.5" />
-                    {fileName || `Drop a .${sourceType} file`}
+                    {fileName || `Drop a ${sourceType.toUpperCase()} file`}
                     <input
                       type="file"
                       className="hidden"
-                      accept={`.${sourceType}`}
+                      accept={accept}
                       onChange={(e) => {
                         const f = e.target.files?.[0] ?? null;
                         setFile(f);
                         setFileName(f?.name ?? "");
+                        setAnalyzeError(null);
                       }}
                     />
                   </label>
                 </div>
               </div>
+              {showNewSource && (
+                <div className="mt-3 grid gap-2 rounded-lg border border-border/80 bg-muted/20 p-3 sm:grid-cols-2">
+                  <input
+                    value={newSource.name}
+                    onChange={(e) =>
+                      setNewSource((s) => ({ ...s, name: e.target.value }))
+                    }
+                    placeholder="Name (e.g. swe-chat)"
+                    className="h-9 rounded-md border border-input bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <input
+                    value={newSource.version}
+                    onChange={(e) =>
+                      setNewSource((s) => ({ ...s, version: e.target.value }))
+                    }
+                    placeholder="Version (e.g. hf-2026-09-10)"
+                    className="h-9 rounded-md border border-input bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <input
+                    value={newSource.method}
+                    onChange={(e) =>
+                      setNewSource((s) => ({ ...s, method: e.target.value }))
+                    }
+                    placeholder="Retrieval method"
+                    className="h-9 rounded-md border border-input bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring sm:col-span-2"
+                  />
+                  <input
+                    value={newSource.license}
+                    onChange={(e) =>
+                      setNewSource((s) => ({ ...s, license: e.target.value }))
+                    }
+                    placeholder="License (optional)"
+                    className="h-9 rounded-md border border-input bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring sm:col-span-2"
+                  />
+                  <div className="sm:col-span-2">
+                    <Button
+                      size="sm"
+                      onClick={() => void createSource()}
+                      disabled={creatingSource}
+                    >
+                      {creatingSource ? "Creating…" : "Create source"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {sourceError && (
+                <Alert tone="error" title="Could not create source" className="mt-3">
+                  {sourceError}
+                </Alert>
+              )}
+              {analyzeError && step === "upload" && (
+                <Alert tone="error" title="Cannot analyze" className="mt-3">
+                  {analyzeError}
+                </Alert>
+              )}
               <div className="mt-4 flex justify-end">
                 <Button
                   size="sm"
-                  onClick={startAnalyze}
-                  disabled={!fileName || analyzing}
+                  onClick={() => void startAnalyze()}
+                  disabled={!file || analyzing}
                 >
                   <Sparkles className="mr-1 h-3.5 w-3.5" /> Analyze
                 </Button>
@@ -643,20 +516,17 @@ export function ImportsPage() {
           {step === "analyze" && (
             <ChartCard
               title="2 · Analyze"
-              description="The AI inspects the structure and proposes a field mapping."
+              description="The assistant profiles columns and samples values. Nothing is written yet."
               action={
                 <Badge variant="info" className="text-[10px]">
-                  <Sparkles className="mr-1 h-3 w-3" /> AI
+                  <Sparkles className="mr-1 h-3 w-3" /> Proposal
                 </Badge>
               }
             >
               {analyzing ? (
                 <div className="space-y-3">
                   <Message role="agent">
-                    <p>Analyzing the file structure…</p>
-                    <p className="text-muted-foreground">
-                      Reading field types and sampling values from the uploaded file.
-                    </p>
+                    <p>Reading the file and profiling fields…</p>
                   </Message>
                   <div className="space-y-2">
                     {[1, 2, 3].map((i) => (
@@ -667,24 +537,40 @@ export function ImportsPage() {
                     ))}
                   </div>
                 </div>
-              ) : (
+              ) : analyzeError ? (
                 <div className="space-y-3">
-                  {analysisError && (
-                    <Alert tone="error" title="Analysis failed">
-                      {analysisError}
-                    </Alert>
-                  )}
+                  <Alert tone="error" title="Analysis failed">
+                    {analyzeError}
+                  </Alert>
+                  <div className="flex justify-end">
+                    <Button variant="outline" size="sm" onClick={() => setStep("upload")}>
+                      Back
+                    </Button>
+                  </div>
+                </div>
+              ) : analysis ? (
+                <div className="space-y-3">
                   <Message role="agent">
                     <p>
                       Found{" "}
                       <span className="font-medium text-foreground">
-                        {displayRowCount.toLocaleString()} rows
+                        {analysis.row_count.toLocaleString()} rows
                       </span>{" "}
                       across{" "}
                       <span className="font-medium text-foreground">
-                        {displayFieldCount} fields
+                        {analysis.fields.length} fields
                       </span>
-                      .
+                      {sessionKey ? (
+                        <>
+                          . Likely session key:{" "}
+                          <code className="rounded bg-muted px-1 font-mono text-foreground">
+                            {sessionKey}
+                          </code>
+                          .
+                        </>
+                      ) : (
+                        "."
+                      )}
                     </p>
                   </Message>
                   <div className="overflow-hidden rounded-lg border border-border/80">
@@ -698,23 +584,23 @@ export function ImportsPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {analysis?.fields.map((field) => {
-                          const profile = analysis.profiles.find(
-                            (item) => item.name === field,
-                          );
+                        {analysis.fields.map((name) => {
+                          const profile = profilesByName.get(name);
+                          const nullable =
+                            profile !== undefined && profile.non_null_ratio < 1;
                           return (
-                            <tr key={field} className="border-t border-border/50">
+                            <tr key={name} className="border-t border-border/50">
                               <td className="px-3 py-2 font-mono text-foreground">
-                                {field}
+                                {name}
                               </td>
                               <td className="px-3 py-2 text-muted-foreground">
-                                {String(profile?.inferred_type ?? "unknown")}
+                                {profile?.inferred_type ?? "—"}
                               </td>
                               <td className="px-3 py-2 font-mono text-muted-foreground">
-                                {sampleValue(analysis.sample_rows[0]?.[field])}
+                                {sampleText(profile?.examples[0])}
                               </td>
                               <td className="px-3 py-2">
-                                {Number(profile?.non_null_ratio ?? 0) < 1 ? (
+                                {nullable ? (
                                   <Badge variant="warning" className="text-[10px]">
                                     yes
                                   </Badge>
@@ -730,12 +616,19 @@ export function ImportsPage() {
                       </tbody>
                     </table>
                   </div>
-                  <div className="flex justify-end">
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setStep("upload")}>
+                      Back
+                    </Button>
                     <Button size="sm" onClick={() => go("map")}>
                       Propose mapping <ArrowRight className="ml-1 h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>
+              ) : (
+                <Alert tone="warning" title="No analysis yet">
+                  Upload a file and run Analyze.
+                </Alert>
               )}
             </ChartCard>
           )}
@@ -743,93 +636,111 @@ export function ImportsPage() {
           {step === "map" && (
             <ChartCard
               title="3 · Map fields"
-              description="Review the AI's proposed mapping. Ambiguities are flagged."
+              description="Review the proposed mapping. Edit targets before anything is stored."
               action={
                 <Badge variant="info" className="text-[10px]">
-                  <Wand2 className="mr-1 h-3 w-3" /> AI proposal
+                  <Wand2 className="mr-1 h-3 w-3" /> Proposal
                 </Badge>
               }
             >
-              <Message role="agent">
-                <p>
-                  {analysis?.proposal.explanation ||
-                    "Review the proposed correspondences before continuing."}
-                </p>
-              </Message>
-              {(analysis?.proposal.ambiguities.length ?? 0) > 0 && (
-                <Alert
-                  tone="warning"
-                  title={`${analysis?.proposal.ambiguities.length ?? 0} ambiguities to review`}
-                  className="mt-3"
-                >
-                  <ul className="ml-3 list-disc space-y-0.5">
-                    {analysis?.proposal.ambiguities.map((a, i) => (
-                      <li key={i}>{a}</li>
-                    ))}
-                  </ul>
+              {!analysis ? (
+                <Alert tone="warning" title="No analysis yet">
+                  Analyze a file before mapping fields.
                 </Alert>
-              )}
-              <div className="mt-3 overflow-hidden rounded-lg border border-border/80">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-muted/40 text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">Source field</th>
-                      <th className="px-3 py-2 font-medium">→ Target</th>
-                      <th className="px-3 py-2 font-medium">Confidence</th>
-                      <th className="px-3 py-2 font-medium">Note</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mappingEntries.map((m) => (
-                      <tr
-                        key={m.sourceField}
-                        className="border-t border-border/50"
-                      >
-                        <td className="px-3 py-2 font-mono text-foreground">
-                          {m.sourceField}
-                        </td>
-                        <td className="px-3 py-2">
-                          <select
-                            value={m.targetField ?? ""}
-                            onChange={(event) => {
-                              const targetField = event.target.value || null;
-                              setMappingEntries((entries) =>
-                                entries.map((entry) =>
-                                  entry.sourceField === m.sourceField
-                                    ? { ...entry, targetField }
-                                    : entry,
-                                ),
-                              );
-                            }}
-                            className="h-8 w-full rounded-md border border-input bg-background px-2 font-mono text-[11px] text-foreground"
+              ) : (
+                <>
+                  <Message role="agent">
+                    <p>{analysis.proposal.explanation}</p>
+                  </Message>
+                  {analysis.proposal.ambiguities.length > 0 && (
+                    <Alert
+                      tone="warning"
+                      title={`${analysis.proposal.ambiguities.length} note${analysis.proposal.ambiguities.length > 1 ? "s" : ""} to review`}
+                      className="mt-3"
+                    >
+                      <ul className="ml-3 list-disc space-y-0.5">
+                        {analysis.proposal.ambiguities.map((a, i) => (
+                          <li key={i}>{a}</li>
+                        ))}
+                      </ul>
+                    </Alert>
+                  )}
+                  <div className="mt-3 overflow-hidden rounded-lg border border-border/80">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-muted/40 text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">Source field</th>
+                          <th className="px-3 py-2 font-medium">→ Target</th>
+                          <th className="px-3 py-2 font-medium">Confidence</th>
+                          <th className="px-3 py-2 font-medium">Note</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {mappingRows.map((m) => (
+                          <tr
+                            key={m.sourceField}
+                            className="border-t border-border/50"
                           >
-                            <option value="">unmapped</option>
-                            {TARGET_FIELDS.map((target) => (
-                              <option key={target} value={target}>
-                                {target}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="px-3 py-2">
-                          <ConfidenceBar value={m.confidence} />
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {m.note ?? ""}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-4 flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => setStep("analyze")}>
-                  Back
-                </Button>
-                <Button size="sm" onClick={confirmMapping}>
-                  Confirm mapping
-                </Button>
-              </div>
+                            <td className="px-3 py-2 font-mono text-foreground">
+                              {m.sourceField}
+                            </td>
+                            <td className="px-3 py-2">
+                              <Select
+                                value={m.targetField ?? "__none__"}
+                                onValueChange={(value) =>
+                                  setMappingRows((rows) =>
+                                    rows.map((row) =>
+                                      row.sourceField === m.sourceField
+                                        ? {
+                                            ...row,
+                                            targetField:
+                                              value === "__none__" ? null : value,
+                                          }
+                                        : row,
+                                    ),
+                                  )
+                                }
+                              >
+                                <SelectTrigger className="h-8 min-w-[11rem] text-[11px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {TARGET_OPTIONS.map((opt) => (
+                                    <SelectItem key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </td>
+                            <td className="px-3 py-2">
+                              <ConfidenceBar value={m.confidence} />
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {m.note ?? ""}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <pre className="mt-3 overflow-x-auto rounded-lg border border-border/80 bg-muted/20 p-3 font-mono text-[11px] text-muted-foreground">
+                    {mappingJson}
+                  </pre>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setStep("analyze")}>
+                      Back
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={confirmMapping}
+                      disabled={!engineMapping.session.external_session_id}
+                    >
+                      Confirm mapping
+                    </Button>
+                  </div>
+                </>
+              )}
             </ChartCard>
           )}
 
@@ -851,69 +762,103 @@ export function ImportsPage() {
                       {applyError}
                     </Alert>
                   )}
-                  <Alert
-                    tone={applyResult?.is_valid ? "success" : "error"}
-                    title={applyResult?.is_valid ? "Mapping is valid" : "Mapping is invalid"}
-                  >
-                    {applyResult?.is_valid
-                      ? `${applyResult.preview?.length ?? 0} preview rows ready.`
-                      : "Correct the mapping before continuing."}
-                  </Alert>
+                  {saveWarning && (
+                    <Alert tone="warning" title="Mapping not saved" className="mb-3">
+                      {saveWarning}
+                    </Alert>
+                  )}
+                  {applyResult?.is_valid ? (
+                    <Alert tone="success" title="Mapping is valid">
+                      Required session id is present.{" "}
+                      {previewSessions.length} preview session
+                      {previewSessions.length === 1 ? "" : "s"} from the file.
+                    </Alert>
+                  ) : !applyError ? (
+                    <Alert tone="info" title="Preview not run">
+                      Confirm the mapping to preview normalized rows.
+                    </Alert>
+                  ) : null}
+                  {applyResult?.warnings && applyResult.warnings.length > 0 && (
+                    <Alert tone="warning" title="Warnings" className="mt-3">
+                      <ul className="ml-3 list-disc space-y-0.5">
+                        {applyResult.warnings.map((w, i) => (
+                          <li key={i}>{w}</li>
+                        ))}
+                      </ul>
+                    </Alert>
+                  )}
                   <Tabs defaultValue="preview" className="mt-3">
                     <TabsList className="h-8">
                       <TabsTrigger value="preview" className="text-[11px]">
-                        Preview ({applyResult?.preview?.length ?? 5})
+                        Preview ({previewSessions.length})
                       </TabsTrigger>
                       <TabsTrigger value="mapping" className="text-[11px]">
                         Applied mapping
                       </TabsTrigger>
                     </TabsList>
                     <TabsContent value="preview">
-                      <div className="overflow-x-auto rounded-lg border border-border/80">
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-muted/40 text-muted-foreground">
-                            <tr>
-                              <th className="px-2 py-2">session.id</th>
-                              <th className="px-2 py-2">agent</th>
-                              <th className="px-2 py-2">model</th>
-                              <th className="px-2 py-2">tokens</th>
-                              <th className="px-2 py-2">tool</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(applyResult?.preview ?? []).map((row, i) => (
-                              <tr
-                                key={i}
-                                className="border-t border-border/50"
-                              >
-                                <td className="px-2 py-2 font-mono text-foreground">
-                                  {previewField(row, "session", "external_session_id")}
-                                </td>
-                                <td className="px-2 py-2">
-                                  {previewField(row, "session", "agent")}
-                                </td>
-                                <td className="px-2 py-2 font-mono text-muted-foreground">
-                                  {previewField(row, "session", "model")}
-                                </td>
-                                <td className="px-2 py-2 font-mono tabular-nums">
-                                  {previewField(row, "model_calls", "prompt_tokens")}
-                                </td>
-                                <td className="px-2 py-2">{previewTool(row)}</td>
+                      {previewSessions.length === 0 ? (
+                        <p className="px-1 py-6 text-center text-xs text-muted-foreground">
+                          No preview rows yet.
+                        </p>
+                      ) : (
+                        <div className="overflow-x-auto rounded-lg border border-border/80">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-muted/40 text-muted-foreground">
+                              <tr>
+                                <th className="px-2 py-2">session.id</th>
+                                <th className="px-2 py-2">agent</th>
+                                <th className="px-2 py-2">model</th>
+                                <th className="px-2 py-2">tokens</th>
+                                <th className="px-2 py-2">tool</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                            </thead>
+                            <tbody>
+                              {previewSessions.map((row, i) => (
+                                <tr
+                                  key={row.session?.external_session_id ?? i}
+                                  className="border-t border-border/50"
+                                >
+                                  <td className="px-2 py-2 font-mono text-foreground">
+                                    {row.session?.external_session_id ?? "—"}
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    {row.session?.agent ?? "—"}
+                                  </td>
+                                  <td className="px-2 py-2 font-mono text-muted-foreground">
+                                    {row.session?.model ??
+                                      row.model_calls?.[0]?.model ??
+                                      "—"}
+                                  </td>
+                                  <td className="px-2 py-2 font-mono tabular-nums">
+                                    {tokenLabel(row.model_calls)}
+                                  </td>
+                                  <td className="px-2 py-2">
+                                    {row.tool_calls?.[0]?.tool_name ?? "—"}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </TabsContent>
                     <TabsContent value="mapping">
                       <pre className="overflow-x-auto rounded-lg border border-border/80 bg-muted/20 p-3 font-mono text-[11px] text-muted-foreground">
-                        {JSON.stringify(buildMapping(), null, 2)}
+                        {mappingJson}
                       </pre>
                     </TabsContent>
                   </Tabs>
                   <div className="mt-4 flex justify-end gap-2">
                     <Button variant="outline" size="sm" onClick={() => setStep("map")}>
                       Back
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void previewMapping()}
+                    >
+                      Re-run preview
                     </Button>
                     <Button
                       size="sm"
@@ -966,10 +911,22 @@ export function ImportsPage() {
                     </div>
                   </Alert>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <Stat label="Rows read" value={rowsReadValue} />
-                    <Stat label="Sessions" value={sessionsValue} />
-                    <Stat label="Duplicates" value={duplicatesValue} />
-                    <Stat label="Rejections" value={rejectionsValue} />
+                    <Stat label="Rows read" value={importReport?.rows_read} />
+                    <Stat
+                      label="Sessions"
+                      value={importReport?.sessions_imported}
+                    />
+                    <Stat
+                      label="Model calls"
+                      value={importReport?.model_calls_imported}
+                    />
+                    <Stat
+                      label="Tool calls"
+                      value={importReport?.tool_calls_imported}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <Stat label="Duplicates" value={importReport?.duplicates} />
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button variant="outline" size="sm" onClick={reset}>
@@ -987,13 +944,17 @@ export function ImportsPage() {
                 <div className="flex flex-col items-center gap-3 py-8 text-center">
                   <ShieldCheck className="h-8 w-8 text-muted-foreground" />
                   <p className="text-xs text-muted-foreground">
-                    Ready to import {displayRowCount.toLocaleString()}{" "}
-                    rows into{" "}
-                    {sourceOptions.find((s) => s.id === sourceId)?.name ??
-                      "the source"}
-                    .
+                    Ready to import{" "}
+                    {analysis
+                      ? `${analysis.row_count.toLocaleString()} rows from ${fileName}`
+                      : fileName || "the selected file"}{" "}
+                    into {selectedSource?.name ?? "the selected source"}.
                   </p>
-                  <Button size="sm" onClick={startImport}>
+                  <Button
+                    size="sm"
+                    onClick={() => void startImport()}
+                    disabled={!file || !sourceId || !applyResult?.is_valid}
+                  >
                     <Database className="mr-1 h-3.5 w-3.5" /> Run import
                   </Button>
                 </div>
@@ -1005,15 +966,14 @@ export function ImportsPage() {
         <aside className="flex flex-col gap-4">
           <ChartCard
             title="Assistant"
-            description="Conversational guidance through the import"
+            description="Guidance through the import"
             badge="AI"
           >
             <div className="space-y-3">
               <Message role="agent">
                 <p>
-                  Hi — I'll help you import a new source. Drop a file and I'll
-                  inspect its structure, propose a mapping, flag ambiguities,
-                  and preview before anything is written.
+                  Drop a file. I propose a mapping, you edit it, then the
+                  engine validates and imports. I do not write to the database.
                 </p>
               </Message>
               <Message role="user">
@@ -1021,10 +981,16 @@ export function ImportsPage() {
                   Importing{" "}
                   <span className="font-medium text-foreground">
                     {sourceType.toUpperCase()}
-                  </span>{" "}
+                  </span>
+                  {fileName ? (
+                    <>
+                      {" "}
+                      (<span className="font-mono">{fileName}</span>)
+                    </>
+                  ) : null}{" "}
                   into{" "}
                   <span className="font-medium text-foreground">
-                    {sourceOptions.find((s) => s.id === sourceId)?.name}
+                    {selectedSource?.name ?? "a new source"}
                   </span>
                   .
                 </p>
@@ -1052,7 +1018,7 @@ export function ImportsPage() {
           >
             <div className="flex flex-col gap-2">
               {(imports ?? []).slice(0, 6).map((imp) => {
-                const src = sourceOptions.find(
+                const src = (sources ?? []).find(
                   (s) => s.id === imp.source_id,
                 );
                 return (
@@ -1089,25 +1055,6 @@ export function ImportsPage() {
             </div>
           </ChartCard>
         </aside>
-      </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
-  return (
-    <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-        {label}
-      </div>
-      <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-foreground">
-        {formatNumber(value)}
       </div>
     </div>
   );

@@ -28,7 +28,7 @@ def client():
 
     def file_reader_for(path: str):
         ext = Path(path).suffix.lower()
-        if ext == ".jsonl":
+        if ext in {".jsonl", ".json"}:
             from agentscope.adapters.files.jsonl_reader import JsonlReader
 
             return JsonlReader()
