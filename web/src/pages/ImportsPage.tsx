@@ -5,15 +5,10 @@ import {
   Sparkles,
   Wand2,
   ShieldCheck,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
   FileText,
-  Bot,
   RefreshCw,
   ArrowRight,
   Database,
-  MessageSquare,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell";
@@ -51,135 +46,23 @@ import {
   TARGET_OPTIONS,
   type MappingRow,
 } from "@/mapping";
+import { cn, relativeTime } from "@/lib/utils";
 import {
-  cn,
-  formatNumber,
-  relativeTime,
-} from "@/lib/utils";
-
-type Step = "upload" | "analyze" | "map" | "validate" | "import";
-type SourceType = "json" | "jsonl" | "csv" | "parquet";
-type Outcome = null | "success" | "warnings" | "duplicate" | "error";
-
-interface PreviewSession {
-  session?: {
-    external_session_id?: string;
-    agent?: string | null;
-    model?: string | null;
-  };
-  model_calls?: {
-    prompt_tokens?: number | null;
-    completion_tokens?: number | null;
-    model?: string | null;
-  }[];
-  tool_calls?: { tool_name?: string }[];
-}
-
-const STEPS: { id: Step; label: string; description: string }[] = [
-  { id: "upload", label: "Upload", description: "Drop a file and pick a source" },
-  { id: "analyze", label: "Analyze", description: "Inspect structure" },
-  { id: "map", label: "Map fields", description: "Confirm field mapping" },
-  { id: "validate", label: "Validate", description: "Preview normalized rows" },
-  { id: "import", label: "Import", description: "Persist and deduplicate" },
-];
-
-const SOURCE_TYPES: {
-  id: SourceType;
-  label: string;
-  desc: string;
-  accept: string;
-}[] = [
-  { id: "jsonl", label: "JSONL", desc: "One record per line", accept: ".jsonl,.json" },
-  { id: "json", label: "JSON", desc: "Array or object", accept: ".json,.jsonl" },
-  { id: "csv", label: "CSV", desc: "Header + rows", accept: ".csv" },
-  { id: "parquet", label: "Parquet", desc: "Columnar table", accept: ".parquet" },
-];
-
-function Message({
-  role,
-  children,
-}: {
-  role: "agent" | "user";
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex gap-3 rounded-lg p-3 text-xs",
-        role === "agent" ? "bg-muted/30" : "bg-transparent",
-      )}
-    >
-      <div
-        className={cn(
-          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
-          role === "agent"
-            ? "bg-primary/15 text-primary"
-            : "bg-secondary text-secondary-foreground",
-        )}
-      >
-        {role === "agent" ? (
-          <Bot className="h-3.5 w-3.5" />
-        ) : (
-          <MessageSquare className="h-3.5 w-3.5" />
-        )}
-      </div>
-      <div className="flex-1 space-y-1.5 text-foreground/90">{children}</div>
-    </div>
-  );
-}
-
-function ConfidenceBar({ value }: { value: number }) {
-  const tone =
-    value >= 0.8
-      ? "bg-success"
-      : value >= 0.5
-        ? "bg-warning"
-        : "bg-destructive";
-  return (
-    <div className="flex items-center gap-2">
-      <div className="relative h-1.5 w-16 overflow-hidden rounded-full bg-muted">
-        <div
-          className={cn("absolute inset-y-0 left-0 rounded-full", tone)}
-          style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%` }}
-        />
-      </div>
-      <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-        {value > 0 ? `${Math.round(value * 100)}%` : "—"}
-      </span>
-    </div>
-  );
-}
-
-function sampleText(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "object") {
-    const raw = JSON.stringify(value);
-    return raw.length > 48 ? `${raw.slice(0, 45)}…` : raw;
-  }
-  const text = String(value);
-  return text.length > 48 ? `${text.slice(0, 45)}…` : text;
-}
-
-function tokenLabel(calls: PreviewSession["model_calls"]): string {
-  let any = false;
-  let sum = 0;
-  for (const call of calls ?? []) {
-    if (call.prompt_tokens != null) {
-      any = true;
-      sum += Number(call.prompt_tokens);
-    }
-    if (call.completion_tokens != null) {
-      any = true;
-      sum += Number(call.completion_tokens);
-    }
-  }
-  return any ? formatNumber(sum) : "—";
-}
+  IMPORT_STEPS,
+  SOURCE_TYPES,
+  sampleText,
+  tokenLabel,
+  type ImportOutcome,
+  type ImportStep,
+  type PreviewSession,
+  type SourceType,
+} from "./imports";
+import { ConfidenceBar, Message, Stat } from "./imports-ui";
 
 export function ImportsPage() {
   const navigate = useNavigate();
-  const [step, setStep] = React.useState<Step>("upload");
-  const [completed, setCompleted] = React.useState<Step[]>([]);
+  const [step, setStep] = React.useState<ImportStep>("upload");
+  const [completed, setCompleted] = React.useState<ImportStep[]>([]);
   const [sourceType, setSourceType] = React.useState<SourceType>("jsonl");
   const [sourceId, setSourceId] = React.useState<string>("");
   const [fileName, setFileName] = React.useState<string>("");
@@ -195,7 +78,7 @@ export function ImportsPage() {
     method: "",
     license: "",
   });
-  const [outcome, setOutcome] = React.useState<Outcome>(null);
+  const [outcome, setOutcome] = React.useState<ImportOutcome>(null);
   const [analysis, setAnalysis] = React.useState<AnalysisOut | null>(null);
   const [mappingRows, setMappingRows] = React.useState<MappingRow[]>([]);
   const [applyResult, setApplyResult] = React.useState<ApplyMappingOut | null>(
@@ -236,7 +119,7 @@ export function ImportsPage() {
     mappingRows.find((r) => r.targetField === "session.external_session_id")
       ?.sourceField ?? analysis?.fields[0];
 
-  const go = (next: Step) => {
+  const go = (next: ImportStep) => {
     if (!completed.includes(step)) setCompleted((c) => [...c, step]);
     setStep(next);
   };
@@ -403,16 +286,14 @@ export function ImportsPage() {
   );
 
   const outcomeMap: Record<
-    Exclude<Outcome, null>,
+    Exclude<ImportOutcome, null>,
     {
-      icon: typeof CheckCircle2;
       title: string;
       tone: "success" | "warning" | "error" | "info";
       body: React.ReactNode;
     }
   > = {
     success: {
-      icon: CheckCircle2,
       title: "Import successful",
       tone: "success",
       body: (
@@ -427,7 +308,6 @@ export function ImportsPage() {
       ),
     },
     warnings: {
-      icon: AlertTriangle,
       title: "Imported with warnings",
       tone: "warning",
       body: (
@@ -439,7 +319,6 @@ export function ImportsPage() {
       ),
     },
     duplicate: {
-      icon: AlertTriangle,
       title: "Duplicate run",
       tone: "warning",
       body: (
@@ -450,7 +329,6 @@ export function ImportsPage() {
       ),
     },
     error: {
-      icon: XCircle,
       title: "Import failed",
       tone: "error",
       body: <>{importError ?? "The import did not complete."}</>,
@@ -475,10 +353,10 @@ export function ImportsPage() {
 
       <div className="mb-5 rounded-xl border border-border/80 bg-card/40 p-4">
         <Stepper
-          steps={STEPS}
+          steps={IMPORT_STEPS}
           current={step}
           completed={completed}
-          onStepClick={(id) => setStep(id as Step)}
+          onStepClick={(id) => setStep(id as ImportStep)}
         />
       </div>
 
@@ -1177,25 +1055,6 @@ export function ImportsPage() {
             </div>
           </ChartCard>
         </aside>
-      </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | null | undefined;
-}) {
-  return (
-    <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-        {label}
-      </div>
-      <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-foreground">
-        {value === null || value === undefined ? "—" : formatNumber(value)}
       </div>
     </div>
   );

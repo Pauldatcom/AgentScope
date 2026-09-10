@@ -183,8 +183,10 @@ def _as_bool(value: Any) -> bool:
     return bool(value)
 
 
-def _as_datetime(value: Any) -> Any:
-    if value is None or isinstance(value, datetime):
+def _as_datetime(value: Any) -> datetime | None:
+    if _is_missing(value):
+        return None
+    if isinstance(value, datetime):
         return value
     if isinstance(value, str):
         text = value.strip()
@@ -194,7 +196,7 @@ def _as_datetime(value: Any) -> Any:
             return datetime.fromisoformat(text)
         except ValueError:
             return None
-    return value
+    return None
 
 
 def _get(data: dict[str, Any], mapping: dict[str, Any], field: str) -> Any:

@@ -1,14 +1,6 @@
 /** Convert a mapping-assistant proposal into the engine's nested mapping. */
 
-export interface ProposalField {
-  source_field: string;
-  target_field: string;
-  confidence: number;
-  explanation?: string;
-  ambiguity?: string | null;
-}
-
-export interface EngineMapping {
+interface EngineMapping {
   session: Record<string, string>;
   model_call: Record<string, string>;
   tool_call: Record<string, string>;
@@ -21,7 +13,15 @@ export interface MappingRow {
   note?: string;
 }
 
-export const SESSION_TARGETS = [
+interface ProposalField {
+  source_field: string;
+  target_field: string;
+  confidence: number;
+  explanation?: string;
+  ambiguity?: string | null;
+}
+
+const SESSION_TARGETS = [
   "external_session_id",
   "agent",
   "model",
@@ -29,7 +29,7 @@ export const SESSION_TARGETS = [
   "ended_at",
 ] as const;
 
-export const MODEL_CALL_TARGETS = [
+const MODEL_CALL_TARGETS = [
   "round_index",
   "model",
   "prompt_tokens",
@@ -40,7 +40,7 @@ export const MODEL_CALL_TARGETS = [
   "occurred_at",
 ] as const;
 
-export const TOOL_CALL_TARGETS = [
+const TOOL_CALL_TARGETS = [
   "tools_path",
   "tool_name",
   "input_chars",
@@ -67,11 +67,11 @@ export const TARGET_OPTIONS: { value: string; label: string }[] = [
   })),
 ];
 
-export function emptyEngineMapping(): EngineMapping {
+function emptyEngineMapping(): EngineMapping {
   return { session: {}, model_call: {}, tool_call: {} };
 }
 
-export function qualifyTarget(target: string): string | null {
+function qualifyTarget(target: string): string | null {
   if (!target) return null;
   if (target.includes(".")) return target;
   if ((SESSION_TARGETS as readonly string[]).includes(target) && target !== "model") {
