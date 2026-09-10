@@ -286,6 +286,17 @@ function filtersToQuery(f: ApiFilters): string {
 export const api = {
   // Sources
   fetchSources: () => apiJson<SourceOut[]>("/sources"),
+  createSource: (payload: {
+    name: string;
+    version: string;
+    method: string;
+    license?: string;
+  }) =>
+    apiJson<SourceOut>("/sources", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
 
   // Sessions
   fetchSessions: (filters: ApiFilters & { limit?: number; offset?: number }) => {
