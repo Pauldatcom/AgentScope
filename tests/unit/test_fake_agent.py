@@ -57,3 +57,11 @@ def test_fake_agent_prefers_nested_tools_over_flat_name():
     assert by_target["tools_path"] == "tools"
     assert by_target["tool_name"] == "tool_name"
     assert by_target["round_index"] == "round_id"
+
+
+def test_fake_agent_maps_provider_to_agent():
+    sample, profiles = _sample(["session_id", "provider", "model"])
+    proposal = FakeAgent().propose(sample, profiles, target_schema={})
+    by_target = {f.target_field: f.source_field for f in proposal.fields}
+    assert by_target["agent"] == "provider"
+    assert by_target["model"] == "model"

@@ -243,3 +243,33 @@ def test_normalizer_parses_iso_timestamps():
     assert batch.sessions[0].started_at.year == 2025
     assert batch.model_calls[0].occurred_at is not None
     assert batch.model_calls[0].occurred_at.tzinfo is not None
+
+
+def test_normalizer_treats_nan_as_missing():
+    source_id = uuid4()
+    import_run_id = uuid4()
+    nan = float("nan")
+    mapping = {
+        "session": {"external_session_id": "session_id", "agent": "agent"},
+        "model_call": {"prompt_tokens": "input_tokens", "round_index": "turn"},
+        "tool_call": {"tool_name": "tool_name"},
+    }
+    rows = [
+        RawRow(
+            line_number=1,
+            data={
+                "session_id": "s-1",
+                "agent": nan,
+                "turn": nan,
+                "input_tokens": nan,
+                "tool_name": nan,
+            },
+        )
+    ]
+    batch = Normalizer().normalize(
+        rows, mapping, source_id=source_id, import_run_id=import_run_id
+    )
+    assert batch.sessions[0].agent is None
+    assert batch.model_calls[0].prompt_tokens is None
+    assert batch.model_calls[0].round_index == 0
+    assert batch.tool_calls == []

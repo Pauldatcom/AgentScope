@@ -21,7 +21,7 @@ _GUESSES: list[tuple[str, str]] = [
     ("instance_id", "external_session_id"),
     ("agent", "agent"),
     ("agent_name", "agent"),
-    ("provider", "model"),
+    ("provider", "agent"),
     ("model", "model"),
     ("llm_model", "model"),
     ("started_at", "started_at"),

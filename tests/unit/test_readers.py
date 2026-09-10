@@ -51,6 +51,24 @@ def test_jsonl_reader_sample(tmp_path: Path):
 
 def test_jsonl_reader_supported_extensions():
     assert ".jsonl" in JsonlReader().supported_extensions()
+    assert ".json" in JsonlReader().supported_extensions()
+
+
+def test_json_array_reader_yields_objects(tmp_path: Path):
+    path = tmp_path / "trace.json"
+    path.write_text(
+        json.dumps(
+            [
+                {"session_id": "s-1", "tokens": 10},
+                {"session_id": "s-2", "tokens": 20},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    rows = list(JsonlReader().read(str(path)))
+    assert len(rows) == 2
+    assert rows[0].data["session_id"] == "s-1"
+    assert rows[1].data["tokens"] == 20
 
 
 def test_csv_reader_reads_rows(tmp_path: Path):

@@ -100,7 +100,7 @@ def _file_reader_for(path: str) -> FileReaderPort:
     from ..adapters.files.jsonl_reader import JsonlReader
 
     ext = Path(path).suffix.lower()
-    if ext == ".jsonl":
+    if ext in {".jsonl", ".json"}:
         return JsonlReader()
     if ext == ".csv":
         from ..adapters.files.csv_reader import CsvReader

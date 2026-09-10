@@ -74,6 +74,12 @@ web/src/mock/
 
 # Node (root)
 node_modules/
+package-lock.json
+web/package-lock.json
+
+# Frontend helper folder (do not ignore via the Python `lib/` rule)
+!web/src/lib/
+!web/src/lib/**
 
 # OS
 .DS_Store

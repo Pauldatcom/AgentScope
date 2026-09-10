@@ -64,8 +64,8 @@ class Normalizer:
                     source_id=source_id,
                     import_run_id=import_run_id,
                     external_session_id=ext_str,
-                    agent=_get(data, smap, "agent"),
-                    model=_get(data, smap, "model"),
+                    agent=_as_str(_get(data, smap, "agent")),
+                    model=_as_str(_get(data, smap, "model")),
                     started_at=_as_datetime(_get(data, smap, "started_at")),
                     ended_at=_as_datetime(_get(data, smap, "ended_at")),
                     metadata={},
@@ -78,13 +78,13 @@ class Normalizer:
             call = ModelCall(
                 id=new_id(),
                 session_id=session.id,
-                round_index=int(_get(data, mmap, "round_index") or 0),
-                model=_get(data, mmap, "model"),
-                prompt_tokens=int(pt) if pt is not None else None,
-                completion_tokens=int(ct) if ct is not None else None,
-                cache_creation_tokens=_get(data, mmap, "cache_creation_tokens"),
-                latency_ms=_get(data, mmap, "latency_ms"),
-                is_error=bool(_get(data, mmap, "is_error") or False),
+                round_index=_as_int(_get(data, mmap, "round_index")) or 0,
+                model=_as_str(_get(data, mmap, "model")),
+                prompt_tokens=_as_int(pt),
+                completion_tokens=_as_int(ct),
+                cache_creation_tokens=_as_int(_get(data, mmap, "cache_creation_tokens")),
+                latency_ms=_as_int(_get(data, mmap, "latency_ms")),
+                is_error=_as_bool(_get(data, mmap, "is_error")),
                 occurred_at=_as_datetime(_get(data, mmap, "occurred_at")),
                 raw_payload=data,
             )
@@ -93,7 +93,7 @@ class Normalizer:
             tools = _tool_records(data, tmap)
             name_key = tmap.get("tool_name", "tool_name")
             for t in tools:
-                tool_name = str(t.get(name_key, "") or "")
+                tool_name = _as_str(t.get(name_key))
                 if not tool_name:
                     continue
                 tool_calls.append(
@@ -102,15 +102,17 @@ class Normalizer:
                         session_id=session.id,
                         model_call_id=call.id,
                         tool_name=tool_name,
-                        input_chars=t.get(tmap.get("input_chars", "input_chars")),
-                        result_chars=t.get(tmap.get("result_chars", "result_chars")),
-                        wall_latency_ms=t.get(
-                            tmap.get("wall_latency_ms", "tool_wall_latency_ms")
+                        input_chars=_as_int(t.get(tmap.get("input_chars", "input_chars"))),
+                        result_chars=_as_int(
+                            t.get(tmap.get("result_chars", "result_chars"))
                         ),
-                        internal_latency_ms=t.get(
-                            tmap.get("internal_latency_ms", "tool_internal_latency_ms")
+                        wall_latency_ms=_as_int(
+                            t.get(tmap.get("wall_latency_ms", "tool_wall_latency_ms"))
                         ),
-                        is_error=bool(t.get(tmap.get("is_error", "is_error"), False)),
+                        internal_latency_ms=_as_int(
+                            t.get(tmap.get("internal_latency_ms", "tool_internal_latency_ms"))
+                        ),
+                        is_error=_as_bool(t.get(tmap.get("is_error", "is_error"))),
                         occurred_at=_as_datetime(
                             t.get(tmap.get("occurred_at", "emitted_at"))
                         ),
@@ -139,9 +141,46 @@ def _tool_records(data: dict[str, Any], tmap: dict[str, Any]) -> list[dict[str, 
     if not name_key:
         return []
     value = _get(data, tmap, "tool_name")
-    if value in (None, ""):
+    if _is_missing(value):
         return []
     return [data]
+
+
+def _is_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str) and not value.strip():
+        return True
+    try:
+        if value != value:
+            return True
+    except Exception:
+        return True
+    return False
+
+
+def _as_str(value: Any) -> str | None:
+    if _is_missing(value):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _as_int(value: Any) -> int | None:
+    if _is_missing(value):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_bool(value: Any) -> bool:
+    if _is_missing(value):
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes"}
+    return bool(value)
 
 
 def _as_datetime(value: Any) -> Any:
