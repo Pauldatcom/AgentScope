@@ -6,6 +6,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>AgentScope — Observability for AI coding agents</title>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("agentscope-theme");
+          if (t !== "light" && t !== "dark") t = "dark";
+          document.documentElement.classList.toggle("dark", t === "dark");
+          document.documentElement.style.colorScheme = t;
+          var m = document.querySelector('meta[name="color-scheme"]');
+          if (m) m.setAttribute("content", t);
+        } catch (e) {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

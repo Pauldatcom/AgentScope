@@ -23,6 +23,7 @@ import { Separator } from "@/components/ui/separator";
 import { api, type SourceOut, type SettingsOut } from "@/api";
 import { useApi } from "@/hooks/useApi";
 import { relativeTime } from "@/lib/utils";
+import { useTheme } from "@/theme";
 
 /** Mask credentials in a Postgres/DB URL so secrets are never rendered. */
 function maskUrl(url: string): string {
@@ -84,7 +85,7 @@ export function SettingsPage() {
     [],
   );
 
-  const [theme, setTheme] = React.useState<"dark" | "light">("dark");
+  const { theme, setTheme } = useTheme();
   const [autoCache, setAutoCache] = React.useState(true);
   const [autoRefresh, setAutoRefresh] = React.useState(false);
   const [openrouterKey, setOpenrouterKey] = React.useState("");
@@ -162,7 +163,12 @@ export function SettingsPage() {
               ) : (
                 <Sun className="h-4 w-4 text-muted-foreground" />
               )}
-              <span className="text-sm text-foreground">Dark theme</span>
+              <div>
+                <div className="text-sm text-foreground">Dark theme</div>
+                <div className="text-[11px] text-muted-foreground">
+                  Stored in this browser. Also available from the header.
+                </div>
+              </div>
             </div>
             <Switch
               checked={theme === "dark"}
