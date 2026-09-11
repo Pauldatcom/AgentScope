@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { FilterChip } from "@/components/filter-chip";
-import { PERIODS } from "@/types";
+import { PERIODS, DEFAULT_FILTERS } from "@/types";
 import type { Filters } from "@/types";
 import { api } from "@/api";
 import { useApi } from "@/hooks/useApi";
@@ -81,14 +81,7 @@ export function FiltersBar({ filters, onChange, className }: FiltersBarProps) {
     });
   }
 
-  const reset = () =>
-    onChange({
-      sourceId: "all",
-      agent: "all",
-      model: "all",
-      status: "all",
-      period: "7d",
-    });
+  const reset = () => onChange({ ...DEFAULT_FILTERS });
 
   return (
     <div

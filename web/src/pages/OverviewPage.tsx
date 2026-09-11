@@ -46,7 +46,7 @@ import {
   type ToolOut,
   type ModelOut,
 } from "@/api";
-import { type Filters } from "@/types";
+import { type Filters, DEFAULT_FILTERS, isInPeriod, periodCutoffMs } from "@/types";
 import { useApi } from "@/hooks/useApi";
 import {
   formatDuration,
@@ -670,13 +670,7 @@ function range(n: number) {
 }
 
 export function OverviewPage() {
-  const [filters, setFilters] = React.useState<Filters>({
-    sourceId: "all",
-    agent: "all",
-    model: "all",
-    status: "all",
-    period: "7d",
-  });
+  const [filters, setFilters] = React.useState<Filters>({ ...DEFAULT_FILTERS });
 
   const apiFilters = {
     source_id: filters.sourceId !== "all" ? filters.sourceId : undefined,
@@ -734,6 +728,19 @@ export function OverviewPage() {
   const error =
     dashError || actError || toolsError || modelsError || sessError;
 
+  const visibleSessions = React.useMemo(
+    () => (sessions ?? []).filter((s) => isInPeriod(s.started_at, filters.period)),
+    [sessions, filters.period],
+  );
+  const visibleBuckets = React.useMemo(() => {
+    const cutoff = periodCutoffMs(filters.period);
+    if (cutoff === null) return buckets ?? [];
+    return (buckets ?? []).filter((b) => {
+      const ts = Date.parse(b.bucket);
+      return !Number.isNaN(ts) && ts >= cutoff;
+    });
+  }, [buckets, filters.period]);
+
   return (
     <div className="animate-fade-in">
       <PageHeader
@@ -764,17 +771,17 @@ export function OverviewPage() {
           <OverviewKpis data={dashboard} />
           <div className="mt-5 grid gap-3 xl:grid-cols-3">
             <div className="xl:col-span-2 flex flex-col gap-3">
-              <ActivityTimelineCard buckets={buckets ?? []} />
+              <ActivityTimelineCard buckets={visibleBuckets} />
               <div className="grid gap-3 md:grid-cols-2">
-                <TokenConsumptionChart buckets={buckets ?? []} />
+                <TokenConsumptionChart buckets={visibleBuckets} />
                 <ToolDistributionCard tools={tools ?? []} />
               </div>
-              <SessionDurationStatusCard sessions={sessions ?? []} />
+              <SessionDurationStatusCard sessions={visibleSessions} />
             </div>
             <div className="flex flex-col gap-3">
               <TopModelUsageCard models={models ?? []} />
               <DataQualitySection
-                sessions={sessions ?? []}
+                sessions={visibleSessions}
                 dashboard={dashboard}
               />
             </div>

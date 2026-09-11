@@ -24,13 +24,38 @@ export interface Filters {
 export const PERIODS: {
   id: Filters["period"];
   label: string;
-  days: number;
+  days: number | null;
 }[] = [
   { id: "24h", label: "Last 24 hours", days: 1 },
   { id: "7d", label: "Last 7 days", days: 7 },
   { id: "30d", label: "Last 30 days", days: 30 },
-  { id: "all", label: "All time", days: 90 },
+  { id: "all", label: "All time", days: null },
 ];
+
+export const DEFAULT_FILTERS: Filters = {
+  sourceId: "all",
+  agent: "all",
+  model: "all",
+  status: "all",
+  period: "all",
+};
+
+export function periodCutoffMs(period: Filters["period"]): number | null {
+  const days = PERIODS.find((p) => p.id === period)?.days ?? null;
+  if (days === null) return null;
+  return Date.now() - days * 24 * 60 * 60 * 1000;
+}
+
+export function isInPeriod(
+  iso: string | null | undefined,
+  period: Filters["period"],
+): boolean {
+  const cutoff = periodCutoffMs(period);
+  if (cutoff === null) return true;
+  if (!iso) return false;
+  const ts = Date.parse(iso);
+  return !Number.isNaN(ts) && ts >= cutoff;
+}
 
 export interface TimelineEvent {
   id: string;
