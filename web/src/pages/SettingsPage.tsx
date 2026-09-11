@@ -363,9 +363,10 @@ export function SettingsPage() {
           )}
         </ChartCard>
 
+        {settings?.enable_integrations && (
         <ChartCard
           title="Integrations"
-          description="Webhooks and export destinations."
+          description="Webhooks and export destinations (dev only)."
           action={
             <Badge variant="secondary" className="text-[10px]">
               2 active
@@ -407,13 +408,14 @@ export function SettingsPage() {
             ))}
           </div>
         </ChartCard>
+        )}
       </div>
 
       <div className="mt-5">
         <Alert tone="info" title="About these settings">
-          Appearance and integrations are stored locally in this browser. The
-          backend settings shown above come from <code className="font-mono">.env</code>
-          and are masked by default. The database URL is never sent by the API.
+          Appearance preferences are stored locally in this browser. Backend
+          settings come from <code className="font-mono">.env</code> and are
+          masked by default. The database URL is never sent by the API.
         </Alert>
       </div>
     </div>

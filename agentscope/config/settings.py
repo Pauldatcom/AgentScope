@@ -30,6 +30,13 @@ class Settings(BaseSettings):
 
     # When true, the Settings UI hides .env-backed values by default.
     mask_env: bool = True
+    # Slack/S3 cards are not production-ready. Unset = on in development only.
+    enable_integrations: bool | None = None
+
+    def integrations_enabled(self) -> bool:
+        if self.enable_integrations is not None:
+            return self.enable_integrations
+        return self.app_env.strip().lower() in {"development", "dev", "local"}
 
 
 def get_settings() -> Settings:

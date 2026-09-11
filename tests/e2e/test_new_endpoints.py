@@ -194,6 +194,7 @@ def test_settings_endpoint(client):
     assert "ia_model" in s
     assert s["database_url"] == ""  # never exposed
     assert s["mask_env"] is True
+    assert s["enable_integrations"] is True  # APP_ENV defaults to development
 
 
 def test_activity_endpoint(client):

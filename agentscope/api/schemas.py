@@ -200,6 +200,7 @@ class SettingsOut(BaseModel):
     openrouter_base_url: str
     database_url: str = ""  # never returned by the router
     mask_env: bool = True
+    enable_integrations: bool = False
 
 
 class ActivityBucketOut(BaseModel):

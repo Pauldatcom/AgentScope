@@ -220,6 +220,7 @@ export interface SettingsOut {
   openrouter_base_url: string;
   database_url: string;
   mask_env: boolean;
+  enable_integrations: boolean;
 }
 
 export interface ActivityBucketOut {

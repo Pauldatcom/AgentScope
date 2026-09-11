@@ -23,4 +23,5 @@ def get_settings(request: Request):
         openrouter_base_url=settings.openrouter_base_url,
         database_url="",  # never expose the connection string
         mask_env=settings.mask_env,
+        enable_integrations=settings.integrations_enabled(),
     )
