@@ -11,8 +11,8 @@ session so that one session -> many model_calls -> many tool_calls.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -119,7 +119,11 @@ class Normalizer:
                     )
                 )
 
-        return NormalizedBatch(sessions, model_calls, tool_calls)
+        return NormalizedBatch(
+            _derive_session_bounds(sessions, model_calls),
+            model_calls,
+            tool_calls,
+        )
 
 
 def _tool_records(data: dict[str, Any], tmap: dict[str, Any]) -> list[dict[str, Any]]:
@@ -188,6 +192,8 @@ def _as_datetime(value: Any) -> datetime | None:
         return None
     if isinstance(value, datetime):
         return value
+    if isinstance(value, int | float):
+        return _epoch_to_datetime(value)
     if isinstance(value, str):
         text = value.strip()
         if text.endswith("Z"):
@@ -197,6 +203,47 @@ def _as_datetime(value: Any) -> datetime | None:
         except ValueError:
             return None
     return None
+
+
+def _epoch_to_datetime(value: int | float) -> datetime | None:
+    """Convert an epoch timestamp to a timezone-aware datetime.
+
+    Heuristic: values >= 10**12 are treated as milliseconds (covers 2001+),
+    smaller values as seconds.
+    """
+    if value >= 10**12:
+        value = value / 1000
+    try:
+        return datetime.fromtimestamp(value, tz=UTC)
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def _derive_session_bounds(
+    sessions: list[Session], model_calls: list[ModelCall]
+) -> list[Session]:
+    """Set started_at/ended_at on sessions from their model_calls when not
+    explicitly mapped."""
+    calls_by_session: dict[UUID, list[ModelCall]] = {}
+    for call in model_calls:
+        calls_by_session.setdefault(call.session_id, []).append(call)
+
+    updated: list[Session] = []
+    for session in sessions:
+        calls = calls_by_session.get(session.id, [])
+        timestamps = [
+            c.occurred_at for c in calls if c.occurred_at is not None
+        ]
+        if not timestamps:
+            updated.append(session)
+            continue
+        started = min(timestamps) if session.started_at is None else session.started_at
+        ended = max(timestamps) if session.ended_at is None else session.ended_at
+        if started is session.started_at and ended is session.ended_at:
+            updated.append(session)
+        else:
+            updated.append(replace(session, started_at=started, ended_at=ended))
+    return updated
 
 
 def _get(data: dict[str, Any], mapping: dict[str, Any], field: str) -> Any:
