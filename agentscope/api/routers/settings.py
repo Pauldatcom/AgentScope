@@ -22,4 +22,5 @@ def get_settings(request: Request):
         ia_model_alt=settings.ia_model_alt,
         openrouter_base_url=settings.openrouter_base_url,
         database_url="",  # never expose the connection string
+        mask_env=settings.mask_env,
     )

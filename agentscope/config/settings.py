@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
+    # When true, the Settings UI hides .env-backed values by default.
+    mask_env: bool = True
+
 
 def get_settings() -> Settings:
     return Settings()

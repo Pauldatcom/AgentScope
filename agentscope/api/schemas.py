@@ -198,7 +198,8 @@ class SettingsOut(BaseModel):
     ia_model: str
     ia_model_alt: str
     openrouter_base_url: str
-    database_url: str = ""  # masked in the router
+    database_url: str = ""  # never returned by the router
+    mask_env: bool = True
 
 
 class ActivityBucketOut(BaseModel):

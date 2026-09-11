@@ -192,7 +192,8 @@ def test_settings_endpoint(client):
     assert "app_env" in s
     assert "ia_provider" in s
     assert "ia_model" in s
-    assert s["database_url"] == ""  # masked
+    assert s["database_url"] == ""  # never exposed
+    assert s["mask_env"] is True
 
 
 def test_activity_endpoint(client):

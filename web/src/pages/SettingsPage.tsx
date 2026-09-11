@@ -9,6 +9,7 @@ import {
   Webhook,
   Save,
   ExternalLink,
+  EyeOff,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell";
@@ -36,25 +37,40 @@ function ReadOnlyField({
   label,
   value,
   mono = false,
+  masked = false,
 }: {
   label: string;
   value: string;
   mono?: boolean;
+  masked?: boolean;
 }) {
+  const shown = masked ? "••••••••" : value;
   return (
     <div className="flex items-center justify-between gap-3 py-2">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span
         className={
-          "truncate text-xs text-foreground " +
-          (mono ? "font-mono" : "")
+          "truncate text-xs text-foreground " + (mono ? "font-mono" : "")
         }
-        title={value}
+        title={masked ? undefined : value}
       >
-        {value || "—"}
+        {shown || "—"}
       </span>
     </div>
   );
+}
+
+const MASK_ENV_STORAGE = "agentscope-mask-env";
+
+function readMaskPref(fallback: boolean): boolean {
+  try {
+    const stored = localStorage.getItem(MASK_ENV_STORAGE);
+    if (stored === "1") return true;
+    if (stored === "0") return false;
+  } catch {
+    // Private mode / blocked storage.
+  }
+  return fallback;
 }
 
 export function SettingsPage() {
@@ -74,11 +90,25 @@ export function SettingsPage() {
   const [openrouterKey, setOpenrouterKey] = React.useState("");
   const [model, setModel] = React.useState("");
   const [saved, setSaved] = React.useState(false);
+  const [maskEnv, setMaskEnv] = React.useState(true);
 
   // Seed the editable model input from the backend settings once they arrive.
   React.useEffect(() => {
     if (settings?.ia_model) setModel(settings.ia_model);
   }, [settings?.ia_model]);
+
+  React.useEffect(() => {
+    if (settings) setMaskEnv(readMaskPref(settings.mask_env ?? true));
+  }, [settings?.mask_env]);
+
+  const onMaskEnvChange = (value: boolean) => {
+    setMaskEnv(value);
+    try {
+      localStorage.setItem(MASK_ENV_STORAGE, value ? "1" : "0");
+    } catch {
+      // Ignore quota / private-mode failures.
+    }
+  };
 
   const sourcesCount = sources?.length ?? 0;
   const loading = settingsLoading || sourcesLoading;
@@ -267,8 +297,14 @@ export function SettingsPage() {
 
         <ChartCard
           title="Backend settings"
-          description="Runtime configuration reported by the API (read-only)."
-          action={<Badge variant="secondary" className="text-[10px]">read-only</Badge>}
+          description="Runtime configuration from .env (read-only)."
+          action={
+            <div className="flex items-center gap-2">
+              <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-[11px] text-muted-foreground">Mask .env</span>
+              <Switch checked={maskEnv} onCheckedChange={onMaskEnvChange} />
+            </div>
+          }
         >
           {!settings && !settingsLoading && (
             <div className="py-6 text-center text-xs text-muted-foreground">
@@ -277,37 +313,51 @@ export function SettingsPage() {
           )}
           {settings && (
             <div className="flex flex-col divide-y divide-border/60">
-              <ReadOnlyField label="Environment" value={settings.app_env} />
+              <ReadOnlyField
+                label="Environment"
+                value={settings.app_env}
+                masked={maskEnv}
+              />
               <ReadOnlyField
                 label="Host"
                 value={`${settings.app_host}:${settings.app_port}`}
                 mono
+                masked={maskEnv}
               />
               <ReadOnlyField
                 label="CORS origins"
                 value={settings.cors_origins}
                 mono
+                masked={maskEnv}
               />
-              <ReadOnlyField label="IA provider" value={settings.ia_provider} />
+              <ReadOnlyField
+                label="IA provider"
+                value={settings.ia_provider}
+                masked={maskEnv}
+              />
               <ReadOnlyField
                 label="Primary model"
                 value={settings.ia_model}
                 mono
+                masked={maskEnv}
               />
               <ReadOnlyField
                 label="Alt model"
                 value={settings.ia_model_alt}
                 mono
+                masked={maskEnv}
               />
               <ReadOnlyField
                 label="OpenRouter base URL"
                 value={settings.openrouter_base_url}
                 mono
+                masked={maskEnv}
               />
               <ReadOnlyField
                 label="Database URL"
                 value={maskUrl(settings.database_url)}
                 mono
+                masked
               />
             </div>
           )}
@@ -362,8 +412,8 @@ export function SettingsPage() {
       <div className="mt-5">
         <Alert tone="info" title="About these settings">
           Appearance and integrations are stored locally in this browser. The
-          backend settings shown above are served read-only by the API in this
-          version.
+          backend settings shown above come from <code className="font-mono">.env</code>
+          and are masked by default. The database URL is never sent by the API.
         </Alert>
       </div>
     </div>
