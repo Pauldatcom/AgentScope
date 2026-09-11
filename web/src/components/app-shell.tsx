@@ -21,6 +21,7 @@ const MOBILE_NAV = [
   { to: "/imports", label: "Imports" },
   { to: "/data-quality", label: "Data quality" },
   { to: "/settings", label: "Settings" },
+  { to: "/docs", label: "Docs" },
 ];
 
 interface AppShellProps {

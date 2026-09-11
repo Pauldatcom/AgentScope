@@ -13,6 +13,7 @@ import { ModelsPage } from "@/pages/ModelsPage";
 import { ImportsPage } from "@/pages/ImportsPage";
 import { DataQualityPage } from "@/pages/DataQualityPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { DocsPage } from "@/pages/DocsPage";
 
 import "./index.css";
 
@@ -31,6 +32,7 @@ function App() {
             <Route path="/imports" element={<ImportsPage />} />
             <Route path="/data-quality" element={<DataQualityPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/docs" element={<DocsPage />} />
           </Routes>
         </AppShell>
       </TooltipProvider>

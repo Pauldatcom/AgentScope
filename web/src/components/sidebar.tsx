@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   Settings as SettingsIcon,
   ScrollText,
+  BookOpen,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -87,6 +88,12 @@ const NAV: { section: string; items: NavItem[] }[] = [
         label: "Settings",
         icon: SettingsIcon,
         description: "Sources, theme, integrations",
+      },
+      {
+        to: "/docs",
+        label: "Docs",
+        icon: BookOpen,
+        description: "Indicators, mapping, data model",
       },
     ],
   },
