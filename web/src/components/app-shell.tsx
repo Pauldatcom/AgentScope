@@ -11,6 +11,7 @@ import {
   SheetClose,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const MOBILE_NAV = [
   { to: "/", label: "Overview" },
@@ -90,6 +91,7 @@ export function AppShell({ children }: AppShellProps) {
               </span>
             </div>
             <div className="flex items-center gap-2">
+              <ThemeToggle />
               <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
                 ● live
               </span>
