@@ -23,7 +23,7 @@ import { Separator } from "@/components/ui/separator";
 import { api, type SourceOut, type SettingsOut } from "@/api";
 import { useApi } from "@/hooks/useApi";
 import { relativeTime } from "@/lib/utils";
-import { useTheme } from "@/theme";
+import { useTheme } from "@/hooks/use-theme";
 
 /** Mask credentials in a Postgres/DB URL so secrets are never rendered. */
 function maskUrl(url: string): string {

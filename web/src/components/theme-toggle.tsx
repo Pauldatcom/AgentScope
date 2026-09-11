@@ -6,7 +6,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useTheme } from "@/theme";
+import { useTheme } from "@/hooks/use-theme";
 
 export function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();

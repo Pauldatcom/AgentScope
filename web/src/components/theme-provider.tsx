@@ -6,7 +6,7 @@ import {
   persistTheme,
   readStoredTheme,
   type Theme,
-} from "@/theme";
+} from "@/hooks/use-theme";
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = React.useState<Theme>(readStoredTheme);
