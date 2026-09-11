@@ -75,6 +75,9 @@ class Validator:
 
         for section in ("model_call", "tool_call"):
             sec = mapping.get(section, {})
+            if not isinstance(sec, dict):
+                errors.append(f"mapping.{section} must be a dict")
+                continue
             for k in sec:
                 if k not in VALID_TARGETS[section]:
                     warnings.append(

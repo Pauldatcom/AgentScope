@@ -42,3 +42,25 @@ def test_unknown_target_field_produces_warning():
 def test_non_dict_mapping_is_invalid():
     result = Validator().validate("not a dict")  # type: ignore[arg-type]
     assert not result.is_valid
+
+
+def test_non_dict_model_call_section_is_invalid():
+    result = Validator().validate(
+        {
+            "session": {"external_session_id": "session_id"},
+            "model_call": "bad",  # type: ignore[dict-item]
+        }
+    )
+    assert not result.is_valid
+    assert any("mapping.model_call must be a dict" in e for e in result.errors)
+
+
+def test_non_dict_tool_call_section_is_invalid():
+    result = Validator().validate(
+        {
+            "session": {"external_session_id": "session_id"},
+            "tool_call": ["bad"],  # type: ignore[dict-item]
+        }
+    )
+    assert not result.is_valid
+    assert any("mapping.tool_call must be a dict" in e for e in result.errors)
