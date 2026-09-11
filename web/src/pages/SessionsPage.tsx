@@ -8,7 +8,7 @@ import { DataTable, type Column } from "@/components/data-table";
 import { StatusBadge, QualityBadge } from "@/components/status-badges";
 import { EmptyState } from "@/components/empty-state";
 import { api, type SessionOut } from "@/api";
-import { type Filters, type SessionStatus, type DataQuality } from "@/types";
+import { type Filters, type SessionStatus, type DataQuality, DEFAULT_FILTERS, isInPeriod } from "@/types";
 import {
   formatDuration,
   formatNumber,
@@ -17,22 +17,16 @@ import {
 } from "@/lib/utils";
 import { useApi } from "@/hooks/useApi";
 
-const PERIOD_DAYS: Record<Filters["period"], number | null> = {
-  "24h": 1,
-  "7d": 7,
-  "30d": 30,
-  all: null,
-};
-
 export function SessionsPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [filters, setFilters] = React.useState<Filters>({
-    sourceId: (params.get("source") as string) || "all",
-    agent: (params.get("agent") as string) || "all",
-    model: (params.get("model") as string) || "all",
-    status: (params.get("status") as Filters["status"]) || "all",
-    period: (params.get("period") as Filters["period"]) || "7d",
+    ...DEFAULT_FILTERS,
+    sourceId: (params.get("source") as string) || DEFAULT_FILTERS.sourceId,
+    agent: (params.get("agent") as string) || DEFAULT_FILTERS.agent,
+    model: (params.get("model") as string) || DEFAULT_FILTERS.model,
+    status: (params.get("status") as Filters["status"]) || DEFAULT_FILTERS.status,
+    period: (params.get("period") as Filters["period"]) || DEFAULT_FILTERS.period,
   });
 
   const { data, loading, error } = useApi(
@@ -48,19 +42,11 @@ export function SessionsPage() {
 
   const sessions = React.useMemo(() => {
     const rows = data ?? [];
-    const days = PERIOD_DAYS[filters.period];
-    const cutoff =
-      days !== null ? Date.now() - days * 24 * 60 * 60 * 1000 : null;
     return rows.filter((s) => {
       if (filters.status !== "all" && s.status !== filters.status) {
         return false;
       }
-      if (cutoff !== null) {
-        if (s.started_at === null) return false;
-        const ts = Date.parse(s.started_at);
-        if (Number.isNaN(ts) || ts < cutoff) return false;
-      }
-      return true;
+      return isInPeriod(s.started_at, filters.period);
     });
   }, [data, filters.status, filters.period]);
 
