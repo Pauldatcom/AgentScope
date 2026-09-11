@@ -219,6 +219,8 @@ export interface SettingsOut {
   ia_model_alt: string;
   openrouter_base_url: string;
   database_url: string;
+  mask_env: boolean;
+  enable_integrations: boolean;
 }
 
 export interface ActivityBucketOut {

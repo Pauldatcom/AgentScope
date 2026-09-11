@@ -100,6 +100,8 @@ All configuration is via environment variables (`.env` file):
 | `CORS_ORIGINS` | `http://localhost:5173` | Allowed CORS origins (comma-separated) |
 | `APP_HOST` | `0.0.0.0` | API host |
 | `APP_PORT` | `8000` | API port |
+| `MASK_ENV` | `true` | Hide `.env` values in Settings (database URL is never sent) |
+| `ENABLE_INTEGRATIONS` | (unset) | Slack/S3 Settings cards; unset = on in development only |
 
 No API key is required for local development — `IA_PROVIDER=fake` uses the
 deterministic `FakeAgent` stub.
