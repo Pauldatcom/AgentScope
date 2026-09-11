@@ -328,7 +328,6 @@ function filtersToQuery(f: ApiFilters): string {
 export const api = {
   // Sources
   fetchSources: () => apiJson<SourceOut[]>("/sources"),
-
   createSource: (payload: SourceIn) =>
     apiJson<SourceOut>("/sources", {
       method: "POST",
