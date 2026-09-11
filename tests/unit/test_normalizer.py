@@ -273,3 +273,108 @@ def test_normalizer_treats_nan_as_missing():
     assert batch.model_calls[0].prompt_tokens is None
     assert batch.model_calls[0].round_index == 0
     assert batch.tool_calls == []
+
+
+def test_normalizer_parses_epoch_millisecond_timestamps():
+    source_id = uuid4()
+    import_run_id = uuid4()
+    mapping = {
+        "session": {"external_session_id": "session_id"},
+        "model_call": {"occurred_at": "timestamp"},
+        "tool_call": {},
+    }
+    rows = [
+        RawRow(
+            line_number=1,
+            data={
+                "session_id": "s-1",
+                "timestamp": 1770721625109,
+            },
+        )
+    ]
+    batch = Normalizer().normalize(
+        rows, mapping, source_id=source_id, import_run_id=import_run_id
+    )
+    assert batch.model_calls[0].occurred_at is not None
+    assert batch.model_calls[0].occurred_at.year == 2026
+    assert batch.model_calls[0].occurred_at.tzinfo is not None
+
+
+def test_normalizer_parses_epoch_second_timestamps():
+    source_id = uuid4()
+    import_run_id = uuid4()
+    mapping = {
+        "session": {"external_session_id": "session_id"},
+        "model_call": {"occurred_at": "timestamp"},
+        "tool_call": {},
+    }
+    rows = [
+        RawRow(
+            line_number=1,
+            data={
+                "session_id": "s-1",
+                "timestamp": 1770721625,
+            },
+        )
+    ]
+    batch = Normalizer().normalize(
+        rows, mapping, source_id=source_id, import_run_id=import_run_id
+    )
+    assert batch.model_calls[0].occurred_at is not None
+    assert batch.model_calls[0].occurred_at.year == 2026
+
+
+def test_normalizer_derives_session_bounds_from_model_calls():
+    source_id = uuid4()
+    import_run_id = uuid4()
+    mapping = {
+        "session": {"external_session_id": "session_id", "agent": "agent"},
+        "model_call": {"occurred_at": "timestamp", "round_index": "turn"},
+        "tool_call": {},
+    }
+    rows = [
+        RawRow(line_number=1, data={"session_id": "s-1", "agent": "Claude", "turn": 0, "timestamp": 1770721600000}),
+        RawRow(line_number=2, data={"session_id": "s-1", "agent": "Claude", "turn": 1, "timestamp": 1770721700000}),
+        RawRow(line_number=3, data={"session_id": "s-1", "agent": "Claude", "turn": 2, "timestamp": 1770721800000}),
+    ]
+    batch = Normalizer().normalize(
+        rows, mapping, source_id=source_id, import_run_id=import_run_id
+    )
+    assert len(batch.sessions) == 1
+    session = batch.sessions[0]
+    assert session.started_at is not None
+    assert session.ended_at is not None
+    assert session.started_at == min(c.occurred_at for c in batch.model_calls if c.occurred_at is not None)
+    assert session.ended_at == max(c.occurred_at for c in batch.model_calls if c.occurred_at is not None)
+
+
+def test_normalizer_preserves_explicit_session_bounds():
+    source_id = uuid4()
+    import_run_id = uuid4()
+    mapping = {
+        "session": {
+            "external_session_id": "session_id",
+            "started_at": "created_at",
+            "ended_at": "closed_at",
+        },
+        "model_call": {"occurred_at": "timestamp"},
+        "tool_call": {},
+    }
+    rows = [
+        RawRow(line_number=1, data={
+            "session_id": "s-1",
+            "created_at": "2025-01-01T00:00:00Z",
+            "closed_at": "2025-01-02T00:00:00Z",
+            "timestamp": 1770721625109,
+        }),
+    ]
+    batch = Normalizer().normalize(
+        rows, mapping, source_id=source_id, import_run_id=import_run_id
+    )
+    session = batch.sessions[0]
+    assert session.started_at is not None
+    assert session.started_at.year == 2025
+    assert session.ended_at is not None
+    assert session.ended_at.day == 2
+    assert batch.model_calls[0].occurred_at is not None
+    assert batch.model_calls[0].occurred_at.year == 2026
