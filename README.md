@@ -5,7 +5,7 @@
 **Explore and normalize traces from coding AI agents.**
 
 [![CI](https://github.com/Pauldatcom/AgentScope/actions/workflows/ci.yml/badge.svg)](https://github.com/Pauldatcom/AgentScope/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-82%25-success)](https://github.com/Pauldatcom/AgentScope)
+[![Coverage](https://img.shields.io/badge/coverage-78%25-success)](https://github.com/Pauldatcom/AgentScope)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688.svg)](https://fastapi.tiangolo.com/)
@@ -98,6 +98,7 @@ All configuration is via environment variables (`.env` file):
 | `OPENROUTER_API_KEY` | (empty) | OpenRouter API key |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter endpoint |
 | `CORS_ORIGINS` | `http://localhost:5173` | Allowed CORS origins (comma-separated) |
+| `APP_ENV` | `development` | Application environment (`development` or `production`) |
 | `APP_HOST` | `0.0.0.0` | API host |
 | `APP_PORT` | `8000` | API port |
 | `MASK_ENV` | `true` | Hide `.env` values in Settings (database URL is never sent) |
@@ -115,9 +116,10 @@ adapters to use cases via a single factory.
 ```
 agentscope/
   domain/         Pure entities, rules, indicators, port contracts (no I/O)
-  application/    Use cases (import, analyze, apply mapping, dashboard)
+  application/    Use cases (import, analyze, apply mapping, mapping management, dashboard)
   adapters/       Postgres, OpenRouter, FakeAgent, JSONL/CSV/Parquet readers
   api/            FastAPI routers + factory that assembles adapters
+  cli/            CLI entry — thin wrapper around the API runner
   config/         pydantic-settings (reads from .env)
 ```
 
@@ -151,10 +153,19 @@ import → verify → normalize → explore
 |---|---|---|
 | `GET` | `/sources` | List dataset sources |
 | `POST` | `/sources` | Create a source |
+| `GET` | `/sources/{source_id}` | Source detail |
 | `POST` | `/imports/upload` | Upload a file and run the import pipeline |
+| `GET` | `/imports` | List import runs |
+| `GET` | `/imports/{import_id}/rejections` | List rejected rows for an import |
 | `GET` | `/sessions` | List sessions (filters: `source_id`, `agent`, `model`) |
 | `GET` | `/sessions/{id}` | Session detail (model calls + tool calls) |
 | `GET` | `/dashboard` | Indicators + definitions (filters: `source_id`, `agent`, `model`) |
+| `GET` | `/agents` | Aggregated breakdown by agent |
+| `GET` | `/tools` | Aggregated breakdown by tool |
+| `GET` | `/models` | Aggregated breakdown by model |
+| `GET` | `/activity` | Aggregated activity timeline |
+| `GET` | `/data-quality` | Data-quality indicators |
+| `GET` | `/settings` | Application settings |
 | `POST` | `/mappings/analyze` | Analyze an unknown file (AI proposes a mapping) |
 | `POST` | `/mappings/apply` | Apply a mapping and preview the normalized result |
 | `GET` | `/mappings` | List saved mappings |
@@ -171,7 +182,7 @@ pnpm lint                   # frontend only (eslint)
 pnpm typecheck              # frontend only (tsc --noEmit)
 ```
 
-41 tests, 82% coverage on `agentscope/`. CI runs on every pull request.
+66 tests, 78% coverage on `agentscope/`. CI runs on every pull request.
 
 ## Documentation
 

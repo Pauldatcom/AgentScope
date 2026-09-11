@@ -21,7 +21,7 @@ erDiagram
 | `session` | one coding-agent session | `(source_id, external_session_id)` |
 | `model_call` | one LLM round within a session | `id` |
 | `tool_call` | one tool invocation within a session | `id` |
-| `mapping` | one versioned field-to-field mapping | `(source_id, version)` |
+| `mapping` | one versioned field-to-field mapping | `(source_id, version)` — enforced at application level |
 | `rejection` | one line rejected at import time | `id` |
 
 ## 3NF justification
@@ -36,9 +36,9 @@ erDiagram
 
 ## Missing values
 
-A metric that does not exist for a source is stored as `NULL` plus a boolean
-flag (e.g. `metric_available` on `model_call`). Indicators expose this in their
-definition (`docs/indicators.md`) — a missing value is never turned into zero.
+A metric that does not exist for a source is stored as `NULL` (the column is
+nullable). Indicators expose this in their definition
+(`docs/indicators.md`) — a missing value is never turned into zero.
 
 ## Provenance
 

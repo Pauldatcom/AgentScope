@@ -15,6 +15,7 @@ flowchart LR
     ImportUC[import_file]
     AnalyzeUC[analyze_unknown]
     ApplyUC[apply_mapping]
+    MappingMgmt[mapping_management]
     DashboardUC[dashboard]
   end
 
@@ -51,6 +52,7 @@ concrete adapters and wires them to use cases.
 - `application` depends only on `domain` (ports + entities + services).
 - `adapters` implement `domain` ports; they may import SQLAlchemy, httpx, pandas.
 - `api` imports `application`, `adapters` and `config`; nothing else.
+- `cli` is a thin wrapper that starts the API server; it does not contain business logic.
 
 ## Decisions (see `decisions.md`)
 
